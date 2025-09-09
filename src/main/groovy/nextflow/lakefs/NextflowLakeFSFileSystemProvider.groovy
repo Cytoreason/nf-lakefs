@@ -101,7 +101,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             case TransferMode.signedURL:
                 def conn = SignedUrlWriteOnlyChannel.createHttpConnection(stagingLocation)
                 try (OutputStream os = conn.getOutputStream()) {
-                    Files.copy(filePath, os);  // 👈 directly streams file into request
+                    Files.copy(filePath, os)  // 👈 directly streams file into request
                 }
                 def flatHeaders = SignedUrlWriteOnlyChannel.getUploadHttpHeadersAndCloseConnection(conn, stagingLocation)
                 linkLakeFSToBackendFile(flatHeaders, lakeFSTarget, stagingLocation)
