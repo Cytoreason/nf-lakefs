@@ -1,0 +1,29 @@
+plugins {
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.5'
+}
+
+version = '0.2.0'
+
+dependencies {
+    compileOnly 'org.slf4j:slf4j-api:2.0.16'
+    compileOnly 'org.pf4j:pf4j:3.12.0'
+    implementation("io.lakefs:sdk:1.66.0")
+    testImplementation ('io.nextflow:nf-google:20.12.1-edge')
+}
+
+nextflowPlugin {
+    nextflowVersion = '25.04.0'
+
+    provider = 'cytoreason'
+    className = 'nextflow.lakefs.NextflowLakeFSPlugin'
+    extensionPoints = [
+            'nextflow.lakefs.NextflowLakeFSPathFactory'
+    ]
+
+//    publishing {
+//        registry {
+//            url = 'https://registry.nextflow.io/api'
+//            authToken = project.findProperty('pluginRegistry.accessToken')
+//        }
+//    }
+}
