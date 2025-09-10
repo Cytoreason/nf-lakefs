@@ -2,7 +2,6 @@
 
 [!build](https://github.com/<your-username>/nf-lakefs/actions/workflows/ci.yml)
 [!Nextflow plugin](https://www.nextflow.io/docs/latest/plugins.html)
-[!License: MIT](https://opensource.org/licenses/MIT)
 
 This plugin integrates Nextflow with lakeFS, allowing you to use `lakefs://` URIs as inputs and outputs in your pipelines. It brings the power of data versioning, reproducibility, and atomic operations to your Nextflow workflows.
 
