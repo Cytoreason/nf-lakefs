@@ -27,11 +27,15 @@ plugins {
 ## Configuration
 
 After installation, you must configure the plugin with your lakeFS server details and credentials. This is also done in your `nextflow.config`.
+In addition there are 2 modes of the plugin to read and write data from/to lakefs. 
+1. signed_url - The plugin requests a signed url for the file he wants to consume from lakefs, or generates a cloud provider storage signed url to use for the write request of a new file.
+2. physical_path - The plugin requests the cloud provider specific physical path (s3:// or gs:// for example) and delegates the request to the relevant nextflow plugin to process the read or write request. by that nextflow process should have the permissions to use the cloud provider specific api requests.
 ```groovy
 lakefs {
     apiUrl    = 'https://your-lakefs-server.example.com/api/v1'
     accessKey = 'YOUR_LAKEFS_ACCESS_KEY'
     secretKey = 'YOUR_LAKEFS_SECRET_KEY'
+    transferMode = 'signed_url'
 }
 ```
 
