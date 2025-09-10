@@ -63,12 +63,13 @@ Here is a simple pipeline that reads a file from a lakeFS repository, processes 
 
 **`main.nf`**
 ```groovy
-params.input = 'lakefs://my-repo/main/path/to/input.csv'
-params.output_dir = 'lakefs://my-repo/main/path/to/output/'
+params.input = 'lakefs://my-repo/main/path/to/**/config.yaml'
+params.output_dir = 'lakefs://my-repo/output/path/to/'
 
 process EXAMPLE_PROCESS {
+
     input:
-    path my_file from Channel.fromPath(params.input)
+    path my_file
 
     output:
     path 'result.txt'
@@ -81,12 +82,9 @@ process EXAMPLE_PROCESS {
 }
 
 workflow {
-    EXAMPLE_PROCESS.out
-        .publishDir(
-            path: params.output_dir,
-            mode: 'copy',
-            saveAs: { "line_count_${it}" }
-        )
+    Channel.fromPath(params.input, type: 'file')
+            | view
+            | EXAMPLE_PROCESS
 }
 ```
 

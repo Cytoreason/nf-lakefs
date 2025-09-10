@@ -63,7 +63,7 @@ process directLakeFSRead {
 }
 
 workflow {
-    config_path = "lakefs://e2-demo-model/Ron_test/config"
+    config_path = "lakefs://${params.input}/config"
     input_channel = Channel.fromPath(config_path + "/**/config.yaml", type: 'file')
             .map { new org.yaml.snakeyaml.Yaml().load(it) + [dataset_id: it.parent.name, file: it] }
             .map { it + [phenodata: { if (it.phenodata) it.phenodata.join(",") }] }
