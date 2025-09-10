@@ -140,6 +140,3 @@ Then, run the release command. This will tag the release on GitHub and publish i
 make release
 # or ./gradlew releasePlugin
 ```
-## License
-
-This project is licensed under the MIT License
