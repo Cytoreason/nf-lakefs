@@ -23,7 +23,7 @@ class NextflowLakeFSPathFactory extends FileSystemPathFactory {
         if (!path) throw new IllegalArgumentException("Missing lakefs path argument")
         if (!path.startsWith('lakefs://')) throw new IllegalArgumentException("lakefs path must start with lakefs:// prefix -- offending value '$path'")
         // note: this URI constructor parse the path parameter and extract the `scheme` and `authority` components
-        final uri = URI.create(path)
+        final uri = new URI(null,null, path,null,null)
         return (NextflowLakeFSPath) FileHelper.getOrCreateFileSystemFor(uri, config()).provider().getPath(uri)
     }
 

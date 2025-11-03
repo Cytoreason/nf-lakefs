@@ -43,7 +43,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
     ObjectsApi getLakeFSClient() { lakeFSClient0 }
 
     @Shared
-    def transferModes = NextflowLakeFSFileSystemProvider.TransferMode.values()
+    def transferModes = NextflowLakeFSFileSystemProvider.TransferMode.signedURL
 
     @Shared
     def accessKey = System.getenv("LAKEFS_ACCESS_KEY")
@@ -154,6 +154,31 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         def repository = TEST_REPO_NAME
         def branch = TEST_MAIN_BRANCH_NAME
         def objectPath = "file-name.txt"
+        def TEXT = "Hello world!"
+        and:
+        def path = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+
+
+        when:
+        Files.write(path, TEXT.bytes)
+        def pathExists = existsPath(repository, branch, objectPath)
+        then:
+        new String(Files.readAllBytes(path)) == TEXT
+        Files.readAllLines(path, Charset.forName('UTF-8')).get(0) == TEXT
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+
+        where:
+        transferMode << transferModes
+    }
+
+    def 'should read a file with space'() {
+        given:
+        setupConfig(transferMode)
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "ab c/file-name.txt"
         def TEXT = "Hello world!"
         and:
         def path = lakeFSpath("lakefs://$repository/$branch/$objectPath")
@@ -410,6 +435,25 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
         cleanup:
         deleteObject(repository, branch, "data/file.txt")
+
+        where:
+        transferMode << transferModes
+    }
+
+    def 'should create a file with space in path'() {
+        given:
+        setupConfig(transferMode)
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+
+        when:
+        def path = lakeFSpath("lakefs://$repository/$branch/data a/file.txt")
+        Files.createFile(path)
+        then:
+        existsPath(repository, branch, "data a/file.txt")
+
+        cleanup:
+        deleteObject(repository, branch, "data a/file.txt")
 
         where:
         transferMode << transferModes
