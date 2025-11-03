@@ -1,8 +1,8 @@
 plugins {
-    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.5'
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.10'
 }
 
-version = '0.2.0'
+version = '0.2.1'
 
 dependencies {
     compileOnly 'org.slf4j:slf4j-api:2.0.16'
