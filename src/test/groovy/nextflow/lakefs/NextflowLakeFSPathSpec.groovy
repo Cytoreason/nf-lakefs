@@ -112,6 +112,7 @@ class NextflowLakeFSPathSpec extends Specification {
         where:
         PATH                            | RELATIVE | EXPECTED
         'lakefs://foo/x/y/z.txt'        | 'lakefs://foo/x/y'  | '/z.txt'
+        'lakefs://foo/x/y d/z.txt'        | 'lakefs://foo/x/y d'  | '/z.txt'
 //        'lakefs://foo/x/y/./z.txt'      | 'lakefs://foo/x/y/' | 'z.txt'
 //        'lakefs://foo/x/y/../z.txt'     | 'lakefs://foo/x/' | 'z.txt'
 //        'lakefs://foo/x/y/../../z.txt'  | 'lakefs://foo/z.txt'

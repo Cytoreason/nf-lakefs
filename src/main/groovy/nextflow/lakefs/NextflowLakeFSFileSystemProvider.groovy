@@ -142,7 +142,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     static Map<String, String> parseHivePartitions(String path) {
         log.debug("Parsing hive partitions for path: $path")
         Pattern partitionPattern = Pattern.compile("([^/]+)=([^/]+)")
-        def uri = new URI(path)
+        def uri = new URI(null,null, path,null,null)
         def partitionMap = [:]
 
         def pathOnly = uri.getPath()
