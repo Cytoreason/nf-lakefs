@@ -101,8 +101,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             // default to false if we can't determine
         }
         if (isSourceDirectory) {
-            log.debug("******** staging directory" + lakeFSTarget + " to remote" + remoteDestination.toString())
-            CopyMoveHelper.copyToForeignTarget(source, remoteDestination, options)
+            log.debug("******** staging directory " + lakeFSTarget + " to remote " + remoteDestination.toString())
+            CopyMoveHelper.copyDirectory(source, remoteDestination, options)
         } else {
             lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
             def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
