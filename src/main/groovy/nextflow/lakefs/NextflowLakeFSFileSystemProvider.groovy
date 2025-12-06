@@ -93,10 +93,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     @Override
     void upload(Path source, Path remoteDestination, CopyOption... options) throws IOException {
         final NextflowLakeFSPath lakeFSTarget = (NextflowLakeFSPath) remoteDestination
-        lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
-        def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
 
-        log.debug("******** staging " + lakeFSTarget + " to " + stagingLocation.physicalAddress.toString())
         def isSourceDirectory = false
         try {
             isSourceDirectory = Files.isDirectory(source)
@@ -104,8 +101,13 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             // default to false if we can't determine
         }
         if (isSourceDirectory) {
+            log.debug("******** staging directory" + lakeFSTarget + " to remote" + remoteDestination.toString())
             CopyMoveHelper.copyToForeignTarget(source, remoteDestination, options)
         } else {
+            lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
+            def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
+
+            log.debug("******** staging " + lakeFSTarget + " to " + stagingLocation.physicalAddress.toString())
             switch (transferMode) {
                 case TransferMode.signedURL:
                     def conn = SignedUrlWriteOnlyChannel.createHttpConnection(stagingLocation)
