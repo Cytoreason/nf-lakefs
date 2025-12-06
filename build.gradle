@@ -1,21 +1,22 @@
 plugins {
-    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.10'
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.12'
 }
 
-version = '0.2.1'
+version = '0.2.2'
 
 dependencies {
     compileOnly 'org.slf4j:slf4j-api:2.0.16'
     compileOnly 'org.pf4j:pf4j:3.12.0'
-    implementation("io.lakefs:sdk:1.66.0")
+    implementation("io.lakefs:sdk:1.72.0")
     testImplementation ('io.nextflow:nf-google:20.12.1-edge')
 }
 
 nextflowPlugin {
-    nextflowVersion = '25.04.0'
+    nextflowVersion = '25.10.0'
 
     provider = 'cytoreason'
     className = 'nextflow.lakefs.NextflowLakeFSPlugin'
+    description = 'This plugin integrates Nextflow with lakeFS, allowing you to use `lakefs://` URIs as inputs and outputs in your pipelines. It brings the power of data versioning, reproducibility, and atomic operations to your Nextflow workflows.'
     extensionPoints = [
             'nextflow.lakefs.NextflowLakeFSPathFactory'
     ]
