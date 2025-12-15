@@ -5,7 +5,6 @@ import io.lakefs.clients.sdk.ApiClient
 import io.lakefs.clients.sdk.ObjectsApi
 import nextflow.Global
 import nextflow.Session
-import nextflow.config.ConfigBuilder
 import nextflow.exception.AbortOperationException
 import nextflow.file.CopyMoveHelper
 import nextflow.file.FileHelper
@@ -36,11 +35,15 @@ import java.nio.file.attribute.BasicFileAttributes
 @Requires({ System.getenv('LAKEFS_ACCESS_KEY')
         && System.getenv('LAKEFS_SECRET_KEY')
         && System.getenv('LAKEFS_API_URL')
+        && System.getenv('LAKEFS_TEST_REPO')
+        && System.getenv('LAKEFS_TEST_BRANCH')
 })
 class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
-    public static final String TEST_REPO_NAME = "e2-demo-model"
-    public static final String TEST_MAIN_BRANCH_NAME = "empty_nextflow_test"
+    public static final String TEST_REPO_NAME = System.getenv('LAKEFS_TEST_REPO')
+    public static final String TEST_MAIN_BRANCH_NAME = System.getenv('LAKEFS_TEST_BRANCH')
+
+
     @Shared
     private ObjectsApi lakeFSClient0
 
@@ -53,17 +56,25 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
     def config = loadConfig()
 
     private static Map loadConfig() {
-        def configFile = LakeFSNioSpec.class.getResource('/test-nextflow.config')
-        new ConfigBuilder()
-                .buildGivenFiles(java.nio.file.Path.of(configFile.toURI()))
-                .toMap()
+        return [
+            lakefs: [
+                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
+                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
+                apiUrl: System.getenv('LAKEFS_API_URL'),
+                transferMode: 'signed_url'
+            ],
+            google: [
+                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                project: System.getenv('GOOGLE_PROJECT') ?: ''
+            ]
+        ]
     }
 
     def setup() {
         ApiClient apiClient = new ApiClient()
-        apiClient.setBasePath(config.lakefs.apiUrl)
-        apiClient.setUsername(config.lakefs.accessKey)
-        apiClient.setPassword(config.lakefs.secretKey)
+        apiClient.setBasePath(System.getenv('LAKEFS_API_URL'))
+        apiClient.setUsername(System.getenv('LAKEFS_ACCESS_KEY'))
+        apiClient.setPassword(System.getenv('LAKEFS_SECRET_KEY'))
         this.lakeFSClient0 = new ObjectsApi(apiClient)
     }
 
@@ -324,6 +335,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         transferMode << transferModes
     }
 
+    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') })
     def 'copy a remote file to a repo which is backed by same file system'() {
         given:
         setupConfig(transferMode)

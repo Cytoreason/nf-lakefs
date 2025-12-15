@@ -37,3 +37,15 @@ jacocoTestReport {
         html.required = true
     }
 }
+
+test {
+    ['LAKEFS_ACCESS_KEY': 'lakefs.accessKey',
+     'LAKEFS_SECRET_KEY': 'lakefs.secretKey',
+     'LAKEFS_API_URL': 'lakefs.apiUrl',
+     'LAKEFS_TEST_REPO': 'lakefs.testRepo',
+     'LAKEFS_TEST_BRANCH': 'lakefs.testBranch',
+     'GOOGLE_PROJECT': 'google.project',
+     'GOOGLE_REGION': 'google.region'].each { envVar, prop ->
+        (project.findProperty(prop) ?: System.getenv(envVar))?.with { environment envVar, it }
+    }
+}

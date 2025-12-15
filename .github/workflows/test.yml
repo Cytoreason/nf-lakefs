@@ -30,8 +30,20 @@ jobs:
       - name: Build
         run: ./gradlew assemble
 
-      - name: Run tests
+      - name: Run unit tests
         run: ./gradlew test
+
+      - name: Run integration tests
+        if: github.event_name == 'workflow_dispatch'
+        run: ./gradlew test
+        env:
+          LAKEFS_ACCESS_KEY: ${{ secrets.LAKEFS_ACCESS_KEY }}
+          LAKEFS_SECRET_KEY: ${{ secrets.LAKEFS_SECRET_KEY }}
+          LAKEFS_API_URL: ${{ secrets.LAKEFS_API_URL }}
+          LAKEFS_TEST_REPO: ${{ secrets.LAKEFS_TEST_REPO }}
+          LAKEFS_TEST_BRANCH: ${{ secrets.LAKEFS_TEST_BRANCH }}
+          GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
+          GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
 
       - name: Generate coverage report
         run: ./gradlew jacocoTestReport
