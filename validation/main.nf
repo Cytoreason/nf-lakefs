@@ -47,6 +47,23 @@ process uploadResults {
     """
 }
 
+// Process to collect files into a directory and publish
+process collectToDirectory {
+    publishDir "${params.output_dir}/output/collected/", mode: 'copy', overwrite: true
+
+    input:
+    path input_files, stageAs: 'input_*/*'
+
+    output:
+    path "output_dir", emit: out_dir
+
+    script:
+    """
+    mkdir -p output_dir
+    cp -r input_* output_dir/
+    """
+}
+
 // Example of direct interaction with lakeFS files in a process
 process directLakeFSRead {
     input:
@@ -70,7 +87,10 @@ workflow {
 //            .filter { !exclude_datasets.contains(it.dataset_id) }
 
     analyzeData(input_channel.map { tuple(it.file, it) })
-//    analyzeData.out.bye | view
+    analyzeData.out.bye | view
+
+    // Collect files from analyzeData into a directory and publish
+    collectToDirectory(analyzeData.out.out_file.collect())
 //    uploadResults(analyzeData.out)
 //    directLakeFSRead('lakefs://infra-testing/main/output/meta_entity/meta_entity_dataset.parquet')
 }

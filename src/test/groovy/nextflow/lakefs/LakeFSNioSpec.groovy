@@ -5,6 +5,7 @@ import io.lakefs.clients.sdk.ApiClient
 import io.lakefs.clients.sdk.ObjectsApi
 import nextflow.Global
 import nextflow.Session
+import nextflow.config.ConfigBuilder
 import nextflow.exception.AbortOperationException
 import nextflow.file.CopyMoveHelper
 import nextflow.file.FileHelper
@@ -32,7 +33,10 @@ import java.nio.file.attribute.BasicFileAttributes
  */
 @Slf4j
 @Timeout(120)
-@Requires({ System.getenv('LAKEFS_ACCESS_KEY') && System.getenv('LAKEFS_SECRET_KEY') })
+@Requires({ System.getenv('LAKEFS_ACCESS_KEY')
+        && System.getenv('LAKEFS_SECRET_KEY')
+        && System.getenv('LAKEFS_API_URL')
+})
 class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
     public static final String TEST_REPO_NAME = "e2-demo-model"
@@ -46,36 +50,29 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
     def transferModes = NextflowLakeFSFileSystemProvider.TransferMode.signedURL
 
     @Shared
-    def accessKey = System.getenv("LAKEFS_ACCESS_KEY")
-    @Shared
-    def secretKey = System.getenv("LAKEFS_SECRET_KEY")
-    @Shared
-    def url = "https://cytoreason.eu-west-1.lakefscloud.io/api/v1"
-    @Shared
-    def googleConfig = [region: 'europe-west1', project: 'cytoreason']
+    def config = loadConfig()
+
+    private static Map loadConfig() {
+        def configFile = LakeFSNioSpec.class.getResource('/test-nextflow.config')
+        new ConfigBuilder()
+                .buildGivenFiles(java.nio.file.Path.of(configFile.toURI()))
+                .toMap()
+    }
 
     def setup() {
-
         ApiClient apiClient = new ApiClient()
-        apiClient.setBasePath(url)
-        apiClient.setUsername(accessKey)
-        apiClient.setPassword(secretKey)
+        apiClient.setBasePath(config.lakefs.apiUrl)
+        apiClient.setUsername(config.lakefs.accessKey)
+        apiClient.setPassword(config.lakefs.secretKey)
         this.lakeFSClient0 = new ObjectsApi(apiClient)
     }
 
     private void setupConfig(transferMode) {
-        def lakefsConfig = [apiUrl: url, accessKey: accessKey, secretKey: secretKey, transferMode: transferMode.configName]
-        def cfg = [lakefs: lakefsConfig]
-
-        if (transferMode == NextflowLakeFSFileSystemProvider.TransferMode.physicalPath) {
-            cfg = cfg + [google: googleConfig]
-        }
-        Global.config = cfg
-        Global.session = Mock(Session) { getConfig() >> cfg }
+        Global.config = config
+        Global.session = Mock(Session) { getConfig() >> config }
         //todo ron >> hack basically the transfer mode is not changed between jvm runs so this shouldn't be done.
         // I think it is probably better to separate the suite for each mode.
-        lakeFSpath("lakefs://e2-demo-model/empty_nextflow_test/").getLakeFSFileSystem().provider().transferMode = transferMode
-
+//        lakeFSpath("lakefs://e2-demo-model/empty_nextflow_test/").getLakeFSFileSystem().provider().transferMode = transferMode
     }
 
 //    def 'should setup transfer mode : #transferMode on provider'() {
@@ -1182,7 +1179,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         transferMode << transferModes
     }
 
-    @Ignore("TODO >> curentlly a problem when not using FileSystemTransferAware, and FileSystemTransferAware fails on copyPath")
+//    @Ignore("TODO >> curentlly a problem when not using FileSystemTransferAware, and FileSystemTransferAware fails on copyPath")
     def 'should upload local dir to lakefs directory/prefix'() {
         given:
         setupConfig(transferMode)

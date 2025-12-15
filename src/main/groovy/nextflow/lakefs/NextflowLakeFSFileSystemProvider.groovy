@@ -91,30 +91,43 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 
     @SuppressWarnings('GroovyUnusedAssignment')
     @Override
-    void upload(Path filePath, Path remoteDestination, CopyOption... options) throws IOException {
+    void upload(Path source, Path remoteDestination, CopyOption... options) throws IOException {
         final NextflowLakeFSPath lakeFSTarget = (NextflowLakeFSPath) remoteDestination
-        lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
-        def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
 
-        log.debug("******** staging " + lakeFSTarget + " to " + stagingLocation.physicalAddress.toString())
-        switch (transferMode) {
-            case TransferMode.signedURL:
-                def conn = SignedUrlWriteOnlyChannel.createHttpConnection(stagingLocation)
-                try (OutputStream os = conn.getOutputStream()) {
-                    Files.copy(filePath, os)  // 👈 directly streams file into request
-                }
-                def flatHeaders = SignedUrlWriteOnlyChannel.getUploadHttpHeadersAndCloseConnection(conn, stagingLocation)
-                linkLakeFSToBackendFile(flatHeaders, lakeFSTarget, stagingLocation)
-                break
-            case TransferMode.physicalPath:
-                def cloudStoragePhysicalPath = FileHelper.asPath(stagingLocation.physicalAddress)
-
-                def targetPhysicalPath = FilesEx.copyTo(filePath, cloudStoragePhysicalPath)
-                log.debug("******** target cloudStoragePhysicalPath " + targetPhysicalPath + "was created from " + filePath)
-                linkLakeFSToBackendFile(targetPhysicalPath, lakeFSTarget, stagingLocation)
-                break
-            default: throw new RuntimeException("only signed url and physical path are supported")
+        def isSourceDirectory = false
+        try {
+            isSourceDirectory = Files.isDirectory(source)
+        } catch (Throwable ignored) {
+            // default to false if we can't determine
         }
+        if (isSourceDirectory) {
+            log.debug("******** staging directory " + lakeFSTarget + " to remote " + remoteDestination.toString())
+            CopyMoveHelper.copyDirectory(source, remoteDestination, options)
+        } else {
+            lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
+            def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
+
+            log.debug("******** staging " + lakeFSTarget + " to " + stagingLocation.physicalAddress.toString())
+            switch (transferMode) {
+                case TransferMode.signedURL:
+                    def conn = SignedUrlWriteOnlyChannel.createHttpConnection(stagingLocation)
+                    try (OutputStream os = conn.getOutputStream()) {
+                        Files.copy(source, os)  // 👈 directly streams file into request
+                    }
+                    def flatHeaders = SignedUrlWriteOnlyChannel.getUploadHttpHeadersAndCloseConnection(conn, stagingLocation)
+                    linkLakeFSToBackendFile(flatHeaders, lakeFSTarget, stagingLocation)
+                    break
+                case TransferMode.physicalPath:
+                    def cloudStoragePhysicalPath = FileHelper.asPath(stagingLocation.physicalAddress)
+
+                    def targetPhysicalPath = FilesEx.copyTo(source, cloudStoragePhysicalPath)
+                    log.debug("******** target cloudStoragePhysicalPath " + targetPhysicalPath + "was created from " + source)
+                    linkLakeFSToBackendFile(targetPhysicalPath, lakeFSTarget, stagingLocation)
+                    break
+                default: throw new RuntimeException("only signed url and physical path are supported")
+            }
+        }
+
 
     }
 
@@ -142,7 +155,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     static Map<String, String> parseHivePartitions(String path) {
         log.debug("Parsing hive partitions for path: $path")
         Pattern partitionPattern = Pattern.compile("([^/]+)=([^/]+)")
-        def uri = new URI(null,null, path,null,null)
+        def uri = new URI(null, null, path, null, null)
         def partitionMap = [:]
 
         def pathOnly = uri.getPath()
@@ -580,7 +593,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
         try {
             BasicFileAttributes attrs = readAttributes(path, BasicFileAttributes.class)
             return attrs.isDirectory()
-        } catch (NoSuchFileException ignored) {
+        } catch (Exception ignored) {
             return false
         }
     }
