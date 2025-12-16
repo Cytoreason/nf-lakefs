@@ -1441,4 +1441,112 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         transferMode << transferModes
     }
 
+    // =====================================================
+    // Auto-create branch tests
+    // =====================================================
+
+    def 'should throw NoSuchFileException when branch does not exist and autoCreateBranch is disabled'() {
+        given:
+        def configWithoutAutoCreate = [
+            lakefs: [
+                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
+                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
+                apiUrl: System.getenv('LAKEFS_API_URL'),
+                autoCreateBranch: false
+            ],
+            google: [
+                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                project: System.getenv('GOOGLE_PROJECT') ?: ''
+            ]
+        ]
+        Global.config = configWithoutAutoCreate
+        Global.session = Mock(Session) { getConfig() >> configWithoutAutoCreate }
+
+        def nonExistentBranch = "non-existent-branch-${UUID.randomUUID().toString().substring(0, 8)}"
+
+        when:
+        lakeFSpath("lakefs://$TEST_REPO_NAME/$nonExistentBranch/test.txt")
+
+        then:
+        thrown(NoSuchFileException)
+    }
+
+    def 'should auto-create branch when autoCreateBranch is enabled'() {
+        given:
+        def newBranchName = "auto-created-branch-${UUID.randomUUID().toString().substring(0, 8)}"
+        def configWithAutoCreate = [
+            lakefs: [
+                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
+                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
+                apiUrl: System.getenv('LAKEFS_API_URL'),
+                autoCreateBranch: true,
+                autoCreateBranchSource: TEST_MAIN_BRANCH_NAME
+            ],
+            google: [
+                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                project: System.getenv('GOOGLE_PROJECT') ?: ''
+            ]
+        ]
+        Global.config = configWithAutoCreate
+        Global.session = Mock(Session) { getConfig() >> configWithAutoCreate }
+
+        and:
+        def client = new LakeFSSDKClient(configWithAutoCreate.lakefs)
+
+        when:
+        def path = lakeFSpath("lakefs://$TEST_REPO_NAME/$newBranchName/test-file.txt")
+        Files.write(path, "Hello from auto-created branch".bytes)
+
+        then:
+        noExceptionThrown()
+        client.branchExists(TEST_REPO_NAME, newBranchName)
+        Files.exists(path)
+
+        cleanup:
+        // Delete the test file
+        try { deleteObject(TEST_REPO_NAME, newBranchName, "test-file.txt") } catch (Exception ignored) {}
+        // Delete the auto-created branch
+        try { client.branchesApi.deleteBranch(TEST_REPO_NAME, newBranchName).execute() } catch (Exception ignored) {}
+        // Reset config
+        Global.config = config
+        Global.session = Mock(Session) { getConfig() >> config }
+    }
+
+    def 'should use custom source branch for auto-create'() {
+        given:
+        def newBranchName = "custom-source-branch-${UUID.randomUUID().toString().substring(0, 8)}"
+        def configWithCustomSource = [
+            lakefs: [
+                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
+                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
+                apiUrl: System.getenv('LAKEFS_API_URL'),
+                autoCreateBranch: true,
+                autoCreateBranchSource: TEST_MAIN_BRANCH_NAME
+            ],
+            google: [
+                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                project: System.getenv('GOOGLE_PROJECT') ?: ''
+            ]
+        ]
+        Global.config = configWithCustomSource
+        Global.session = Mock(Session) { getConfig() >> configWithCustomSource }
+
+        and:
+        def client = new LakeFSSDKClient(configWithCustomSource.lakefs)
+
+        when:
+        def path = lakeFSpath("lakefs://$TEST_REPO_NAME/$newBranchName/custom-source-test.txt")
+        Files.write(path, "Hello from custom source branch".bytes)
+
+        then:
+        noExceptionThrown()
+        client.branchExists(TEST_REPO_NAME, newBranchName)
+
+        cleanup:
+        try { deleteObject(TEST_REPO_NAME, newBranchName, "custom-source-test.txt") } catch (Exception ignored) {}
+        try { client.branchesApi.deleteBranch(TEST_REPO_NAME, newBranchName).execute() } catch (Exception ignored) {}
+        Global.config = config
+        Global.session = Mock(Session) { getConfig() >> config }
+    }
+
 }

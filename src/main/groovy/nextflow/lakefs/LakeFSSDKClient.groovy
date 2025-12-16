@@ -2,8 +2,10 @@ package nextflow.lakefs
 
 import io.lakefs.clients.sdk.ApiClient
 import io.lakefs.clients.sdk.ApiException
+import io.lakefs.clients.sdk.BranchesApi
 import io.lakefs.clients.sdk.ObjectsApi
 import io.lakefs.clients.sdk.StagingApi
+import io.lakefs.clients.sdk.model.BranchCreation
 import io.lakefs.clients.sdk.model.ObjectStats
 import io.lakefs.clients.sdk.model.ObjectStatsList
 import io.lakefs.clients.sdk.model.StagingLocation
@@ -21,6 +23,7 @@ class LakeFSSDKClient {
 
     ObjectsApi objectsApi
     StagingApi stagingApi
+    BranchesApi branchesApi
 
     LakeFSSDKClient(lakeFSConfig) {
 
@@ -36,6 +39,7 @@ class LakeFSSDKClient {
 
         this.objectsApi = new ObjectsApi(apiClient)
         this.stagingApi = new StagingApi(apiClient)
+        this.branchesApi = new BranchesApi(apiClient)
     }
 
     StagingLocation getStagingLocation(String repo, String ref, String objectPath, boolean presign) {
@@ -100,5 +104,31 @@ class LakeFSSDKClient {
 
     String deleteObject(String repo, String branch, String objectPath) {
         return objectsApi.deleteObject(repo, branch, objectPath).execute()
+    }
+
+    boolean branchExists(String repo, String branch) {
+        try {
+            branchesApi.getBranch(repo, branch).execute()
+            return true
+        } catch (ApiException e) {
+            if (e.getCode() == 404) {
+                return false
+            }
+            throw e
+        }
+    }
+
+    void createBranch(String repo, String branch, String sourceBranch) {
+        def branchCreation = new BranchCreation()
+        branchCreation.setName(branch)
+        branchCreation.setSource(sourceBranch)
+        branchesApi.createBranch(repo, branchCreation).execute()
+        log.info("Created branch '$branch' from '$sourceBranch' in repository '$repo'")
+    }
+
+    void createBranchIfNotExists(String repo, String branch, String sourceBranch) {
+        if (!branchExists(repo, branch)) {
+            createBranch(repo, branch, sourceBranch)
+        }
     }
 }

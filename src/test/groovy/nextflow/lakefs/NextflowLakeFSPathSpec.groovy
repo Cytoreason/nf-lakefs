@@ -6,6 +6,7 @@ import spock.lang.Specification
 import spock.lang.Unroll
 
 class NextflowLakeFSPathSpec extends Specification {
+
     def setupSpec() {
         // Initialize the NextflowLakeFSPathFactory with a dummy config for testing
         // This is needed because FileHelper.asPath internally uses the factory
@@ -17,6 +18,16 @@ class NextflowLakeFSPathSpec extends Specification {
                         secretKey: "test-secret"
                 ]
         ]
+    }
+
+    def setup() {
+        // Mock the LakeFSSDKClient to bypass branch existence check
+        LakeFSSDKClient.metaClass.branchExists = { String repo, String branch -> true }
+    }
+
+    def cleanup() {
+        // Reset metaClass
+        LakeFSSDKClient.metaClass = null
     }
 
 
