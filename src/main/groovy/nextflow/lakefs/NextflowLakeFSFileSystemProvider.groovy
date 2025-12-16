@@ -57,6 +57,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     private final Map<String, NextflowLakeFSFileSystem> fileSystems = [:]
     protected LakeFSSDKClient lakeFSClient
     TransferMode transferMode
+    boolean autoCreateBranch = false
+    String autoCreateBranchSource = 'main'
 
     @Override
     boolean canUpload(Path source, Path target) {
@@ -279,7 +281,13 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 //            verifyRepository(repository)
 
             transferMode = TransferMode.fromString(lakeFSConfig.transferMode, TransferMode.signedURL)
+            autoCreateBranch = lakeFSConfig.autoCreateBranch ?: false
+            autoCreateBranchSource = lakeFSConfig.autoCreateBranchSource ?: 'main'
             lakeFSClient = new LakeFSSDKClient(lakeFSConfig)
+
+            // Check/create branch once at file system creation
+            ensureBranchExists(repoAndRef.repository, repoAndRef.ref)
+
             fs = new NextflowLakeFSFileSystem(this, uri, repoAndRef.repository, repoAndRef.ref)
             fileSystems.put(fileSystemKey, fs)
             return fs
@@ -313,6 +321,22 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 
     static String getFileSystemKey(String repository, String ref) {
         "${repository}/${ref}".toString()
+    }
+
+    /**
+     * Ensures the branch exists when file system is created.
+     * If autoCreateBranch is enabled and branch doesn't exist, creates it from the source branch.
+     * @throws NoSuchFileException if branch doesn't exist and autoCreateBranch is disabled
+     */
+    protected void ensureBranchExists(String repository, String branch) {
+        if (!lakeFSClient.branchExists(repository, branch)) {
+            if (autoCreateBranch) {
+                log.info("Branch '$branch' does not exist in repository '$repository', auto-creating from '$autoCreateBranchSource'")
+                lakeFSClient.createBranch(repository, branch, autoCreateBranchSource)
+            } else {
+                throw new NoSuchFileException("Branch '$branch' does not exist in repository '$repository'. Enable 'autoCreateBranch' in lakefs config to auto-create branches.")
+            }
+        }
     }
 
 

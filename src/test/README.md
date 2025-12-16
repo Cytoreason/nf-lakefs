@@ -84,3 +84,19 @@ Before running, ensure the following secrets are configured in your repository s
 - `LAKEFS_TEST_BRANCH`
 - `GOOGLE_PROJECT` (optional)
 - `GOOGLE_REGION` (optional)
+
+## Test Categories
+
+### Unit Tests
+
+- `LakeFSSDKClientSpec` - Tests for the lakeFS SDK client wrapper (branch operations, etc.)
+- `NextflowLakeFSFileSystemProviderSpec` - Tests for the file system provider (auto-create branch logic, etc.)
+- `NextflowLakeFSPathSpec` - Tests for path parsing and manipulation
+- `NextflowLakeFSPathFactorySpec` - Tests for path factory
+
+### Integration Tests
+
+- `LakeFSNioSpec` - Full integration tests requiring a running lakeFS instance
+  - File operations (read, write, copy, move, delete)
+  - Directory operations
+  - Auto-create branch feature tests

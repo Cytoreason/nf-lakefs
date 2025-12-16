@@ -6,6 +6,16 @@ import spock.lang.Specification
 
 class NextflowLakeFSPathFactorySpec extends Specification {
 
+    def setup() {
+        // Mock the LakeFSSDKClient to bypass branch existence check
+        LakeFSSDKClient.metaClass.branchExists = { String repo, String branch -> true }
+    }
+
+    def cleanup() {
+        // Reset metaClass
+        LakeFSSDKClient.metaClass = null
+    }
+
     def 'should parse lakefs paths'() {
 
         when:

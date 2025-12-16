@@ -34,8 +34,37 @@ lakefs {
     accessKey = 'YOUR_LAKEFS_ACCESS_KEY'
     secretKey = 'YOUR_LAKEFS_SECRET_KEY'
     transferMode = 'signed_url'
+    autoCreateBranch = false
+    autoCreateBranchSource = 'main'
 }
 ```
+
+### Configuration Options
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `apiUrl` | Yes | - | lakeFS API endpoint URL |
+| `accessKey` | Yes | - | lakeFS access key |
+| `secretKey` | Yes | - | lakeFS secret key |
+| `transferMode` | No | `signed_url` | Transfer mode: `signed_url` or `physical_path` |
+| `autoCreateBranch` | No | `false` | Automatically create branch if it doesn't exist when writing |
+| `autoCreateBranchSource` | No | `main` | Source branch to create new branches from |
+
+### Auto-Create Branch
+
+When `autoCreateBranch` is enabled, the plugin will automatically create a new branch if it doesn't exist when you attempt to write to it. This is useful for workflows that dynamically create output branches.
+
+```groovy
+lakefs {
+    apiUrl    = 'https://your-lakefs-server.example.com/api/v1'
+    accessKey = 'YOUR_LAKEFS_ACCESS_KEY'
+    secretKey = 'YOUR_LAKEFS_SECRET_KEY'
+    autoCreateBranch = true
+    autoCreateBranchSource = 'main'  // New branches will be created from 'main'
+}
+```
+
+With this configuration, writing to `lakefs://my-repo/new-branch/file.txt` will automatically create `new-branch` from `main` if it doesn't already exist.
 
 ## Usage Example
 
