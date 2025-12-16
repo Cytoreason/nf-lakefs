@@ -13,7 +13,7 @@ dependencies {
 }
 
 nextflowPlugin {
-    nextflowVersion = '25.10.0'
+    nextflowVersion = '25.04.0'
 
     provider = 'cytoreason'
     className = 'nextflow.lakefs.NextflowLakeFSPlugin'
