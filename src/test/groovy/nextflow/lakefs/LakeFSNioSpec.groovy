@@ -50,7 +50,10 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
     ObjectsApi getLakeFSClient() { lakeFSClient0 }
 
     @Shared
-    def transferModes = NextflowLakeFSFileSystemProvider.TransferMode.signedURL
+    def transferModes = NextflowLakeFSFileSystemProvider.TransferMode.fromString(
+            System.getenv('LAKEFS_TRANSFER_MODE'),
+            NextflowLakeFSFileSystemProvider.TransferMode.signedURL
+    )
 
     @Shared
     def config = loadConfig()
@@ -61,7 +64,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
                 accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
                 secretKey: System.getenv('LAKEFS_SECRET_KEY'),
                 apiUrl: System.getenv('LAKEFS_API_URL'),
-                transferMode: 'signed_url'
+                transferMode: System.getenv('LAKEFS_TRANSFER_MODE') ?: 'signed_url'
             ],
             google: [
                 region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',

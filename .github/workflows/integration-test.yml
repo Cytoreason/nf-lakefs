@@ -2,6 +2,29 @@ name: Integration Test
 
 on:
   workflow_dispatch:
+    inputs:
+      lakefs_test_repo:
+        description: 'LakeFS test repository'
+        required: true
+      lakefs_test_branch:
+        description: 'LakeFS test branch'
+        required: true
+      transfer_mode:
+        description: 'Transfer mode (signed_url or physical_path)'
+        required: false
+        default: 'signed_url'
+        type: choice
+        options:
+          - signed_url
+          - physical_path
+      google_project:
+        description: 'Google Cloud project for physical_path(optional)'
+        required: false
+        default: ''
+      google_region:
+        description: 'Google Cloud region for physical_path(optional)'
+        required: false
+        default: 'eu-west-1'
 
 jobs:
   integration-test:
@@ -29,10 +52,11 @@ jobs:
           LAKEFS_ACCESS_KEY: ${{ secrets.LAKEFS_ACCESS_KEY }}
           LAKEFS_SECRET_KEY: ${{ secrets.LAKEFS_SECRET_KEY }}
           LAKEFS_API_URL: ${{ secrets.LAKEFS_API_URL }}
-          LAKEFS_TEST_REPO: ${{ secrets.LAKEFS_TEST_REPO }}
-          LAKEFS_TEST_BRANCH: ${{ secrets.LAKEFS_TEST_BRANCH }}
-          GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
-          GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
+          LAKEFS_TEST_REPO: ${{ inputs.lakefs_test_repo }}
+          LAKEFS_TEST_BRANCH: ${{ inputs.lakefs_test_branch }}
+          LAKEFS_TRANSFER_MODE: ${{ inputs.transfer_mode }}
+          GOOGLE_PROJECT: ${{ inputs.google_project }}
+          GOOGLE_REGION: ${{ inputs.google_region }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
