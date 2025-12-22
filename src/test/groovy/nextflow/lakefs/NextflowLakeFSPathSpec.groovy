@@ -21,8 +21,8 @@ class NextflowLakeFSPathSpec extends Specification {
     }
 
     def setup() {
-        // Mock the LakeFSSDKClient to bypass branch existence check
-        LakeFSSDKClient.metaClass.branchExists = { String repo, String branch -> true }
+        // Mock the LakeFSSDKClient to bypass ref existence check
+        LakeFSSDKClient.metaClass.refExists = { String repo, String ref -> true }
     }
 
     def cleanup() {

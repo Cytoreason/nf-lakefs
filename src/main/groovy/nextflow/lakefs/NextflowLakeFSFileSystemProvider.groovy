@@ -285,8 +285,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             autoCreateBranchSource = lakeFSConfig.autoCreateBranchSource ?: 'main'
             lakeFSClient = new LakeFSSDKClient(lakeFSConfig)
 
-            // Check/create branch once at file system creation
-            ensureBranchExists(repoAndRef.repository, repoAndRef.ref)
+            // Check/create ref once at file system creation
+            ensureRefExists(repoAndRef.repository, repoAndRef.ref)
 
             fs = new NextflowLakeFSFileSystem(this, uri, repoAndRef.repository, repoAndRef.ref)
             fileSystems.put(fileSystemKey, fs)
@@ -324,18 +324,53 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     }
 
     /**
-     * Ensures the branch exists when file system is created.
-     * If autoCreateBranch is enabled and branch doesn't exist, creates it from the source branch.
-     * @throws NoSuchFileException if branch doesn't exist and autoCreateBranch is disabled
+     * Ensures the reference exists when file system is created.
+     * The ref can be a branch, tag, or commit ID.
+     * If autoCreateBranch is enabled and the ref doesn't exist at all, creates it as a branch from the source branch.
+     * @throws NoSuchFileException if ref doesn't exist and autoCreateBranch is disabled
+     * @throws IllegalArgumentException if autoCreateBranchSource is a tag (tags cannot be used as branch source)
      */
-    protected void ensureBranchExists(String repository, String branch) {
-        if (!lakeFSClient.branchExists(repository, branch)) {
-            if (autoCreateBranch) {
-                log.info("Branch '$branch' does not exist in repository '$repository', auto-creating from '$autoCreateBranchSource'")
-                lakeFSClient.createBranch(repository, branch, autoCreateBranchSource)
-            } else {
-                throw new NoSuchFileException("Branch '$branch' does not exist in repository '$repository'. Enable 'autoCreateBranch' in lakefs config to auto-create branches.")
-            }
+    protected void ensureRefExists(String repository, String ref) {
+        // First check if the ref exists as any type (branch, tag, or commit)
+        if (lakeFSClient.refExists(repository, ref)) {
+            log.debug("Reference '$ref' exists in repository '$repository'")
+            return
+        }
+
+        // Ref doesn't exist at all - try to create as branch if auto-create is enabled
+        if (autoCreateBranch) {
+            // Validate that autoCreateBranchSource is not a tag
+            validateAutoCreateBranchSource(repository)
+
+            log.info("Reference '$ref' does not exist in repository '$repository', auto-creating branch from '$autoCreateBranchSource'")
+            lakeFSClient.createBranch(repository, ref, autoCreateBranchSource)
+        } else {
+            throw new NoSuchFileException("Reference '$ref' does not exist in repository '$repository'. Enable 'autoCreateBranch' in lakefs config to auto-create branches.")
+        }
+    }
+
+    /**
+     * Validates that autoCreateBranchSource is a valid branch (not a tag).
+     * Tags are immutable references and cannot be used as source for new branches in the same way branches can.
+     * @throws IllegalArgumentException if autoCreateBranchSource is a tag
+     * @throws NoSuchFileException if autoCreateBranchSource does not exist
+     */
+    protected void validateAutoCreateBranchSource(String repository) {
+        // Check if the source is a tag - tags should not be used as branch source
+        if (lakeFSClient.tagExists(repository, autoCreateBranchSource)) {
+            throw new IllegalArgumentException(
+                "Invalid 'autoCreateBranchSource' configuration: '$autoCreateBranchSource' is a tag, not a branch. " +
+                "Tags are immutable references and should not be used as the source for auto-creating branches. " +
+                "Please specify a branch name in your lakefs.autoCreateBranchSource configuration."
+            )
+        }
+
+        // Check if the source branch exists
+        if (!lakeFSClient.branchExists(repository, autoCreateBranchSource)) {
+            throw new NoSuchFileException(
+                "Invalid 'autoCreateBranchSource' configuration: branch '$autoCreateBranchSource' does not exist in repository '$repository'. " +
+                "Please specify an existing branch name in your lakefs.autoCreateBranchSource configuration."
+            )
         }
     }
 

@@ -1549,4 +1549,266 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         Global.session = Mock(Session) { getConfig() >> config }
     }
 
+    // =====================================================
+    // Tag support tests
+    // =====================================================
+
+    def 'should read file from a tag'() {
+        given:
+        setupConfig(transferMode)
+        def repository = TEST_REPO_NAME
+        def testBranchName = "tag-test-branch-${UUID.randomUUID().toString().substring(0, 8)}"
+        def tagName = "test-tag-${UUID.randomUUID().toString().substring(0, 8)}"
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        // Create a separate branch for this test
+        client.createBranch(repository, testBranchName, TEST_MAIN_BRANCH_NAME)
+
+        and:
+        // Create a file on the test branch
+        def objectPath = "tag-test-file.txt"
+        def TEXT = "Hello from tag test!"
+        def branchPath = lakeFSpath("lakefs://$repository/$testBranchName/$objectPath")
+        Files.write(branchPath, TEXT.bytes)
+
+        and:
+        // Commit the changes so the tag can see them
+        client.commit(repository, testBranchName, "Add test file for tag test")
+
+        and:
+        // Create a tag pointing to the committed branch
+        client.createTag(repository, tagName, testBranchName)
+
+        when:
+        // Read from the tag
+        def tagPath = lakeFSpath("lakefs://$repository/$tagName/$objectPath")
+
+        then:
+        noExceptionThrown()
+        Files.exists(tagPath)
+        new String(Files.readAllBytes(tagPath)) == TEXT
+
+        cleanup:
+        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+        try { client.deleteBranch(repository, testBranchName) } catch (Exception ignored) {}
+
+        where:
+        transferMode << transferModes
+    }
+
+    def 'should check tag exists using refExists'() {
+        given:
+        setupConfig(transferMode)
+        def repository = TEST_REPO_NAME
+        def tagName = "test-tag-${UUID.randomUUID().toString().substring(0, 8)}"
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        // Create a tag pointing to the main branch (no need for file, just testing tag existence)
+        client.createTag(repository, tagName, TEST_MAIN_BRANCH_NAME)
+
+        expect:
+        client.tagExists(repository, tagName)
+        client.refExists(repository, tagName)
+        !client.branchExists(repository, tagName) // tag is not a branch
+
+        cleanup:
+        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+
+        where:
+        transferMode << transferModes
+    }
+
+    def 'should not throw when accessing tag with autoCreateBranch disabled'() {
+        given:
+        def repository = TEST_REPO_NAME
+        def tagName = "test-tag-${UUID.randomUUID().toString().substring(0, 8)}"
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        // Create a tag pointing to the main branch
+        client.createTag(repository, tagName, TEST_MAIN_BRANCH_NAME)
+
+        and:
+        def configWithoutAutoCreate = [
+            lakefs: [
+                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
+                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
+                apiUrl: System.getenv('LAKEFS_API_URL'),
+                autoCreateBranch: false
+            ],
+            google: [
+                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                project: System.getenv('GOOGLE_PROJECT') ?: ''
+            ]
+        ]
+        Global.config = configWithoutAutoCreate
+        Global.session = Mock(Session) { getConfig() >> configWithoutAutoCreate }
+
+        when:
+        // This should work even with autoCreateBranch=false because the tag exists
+        def path = lakeFSpath("lakefs://$repository/$tagName/")
+
+        then:
+        noExceptionThrown()
+        Files.exists(path)
+
+        cleanup:
+        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+        Global.config = config
+        Global.session = Mock(Session) { getConfig() >> config }
+    }
+
+    def 'should read file from a commit ID'() {
+        given:
+        setupConfig(transferMode)
+        def repository = TEST_REPO_NAME
+        def testBranchName = "commit-test-branch-${UUID.randomUUID().toString().substring(0, 8)}"
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        // Create a separate branch for this test
+        client.createBranch(repository, testBranchName, TEST_MAIN_BRANCH_NAME)
+
+        and:
+        // Create a file on the test branch
+        def objectPath = "commit-test-file.txt"
+        def TEXT = "Hello from commit test!"
+        def branchPath = lakeFSpath("lakefs://$repository/$testBranchName/$objectPath")
+        Files.write(branchPath, TEXT.bytes)
+
+        and:
+        // Commit the changes and get the commit ID
+        def commitId = client.commit(repository, testBranchName, "Add test file for commit ID test")
+
+        when:
+        // Read from the commit ID directly
+        def commitPath = lakeFSpath("lakefs://$repository/$commitId/$objectPath")
+
+        then:
+        noExceptionThrown()
+        Files.exists(commitPath)
+        new String(Files.readAllBytes(commitPath)) == TEXT
+
+        cleanup:
+        try { client.deleteBranch(repository, testBranchName) } catch (Exception ignored) {}
+
+        where:
+        transferMode << transferModes
+    }
+
+    def 'refExists should correctly identify branch, tag, and commit'() {
+        given:
+        setupConfig(transferMode)
+        def repository = TEST_REPO_NAME
+        def tagName = "test-tag-${UUID.randomUUID().toString().substring(0, 8)}"
+
+        and:
+        def client = new LakeFSSDKClient(config.lakefs)
+        def commitId = client.branchesApi.getBranch(repository, TEST_MAIN_BRANCH_NAME).execute().commitId
+
+        and:
+        // Create a tag for testing
+        client.createTag(repository, tagName, TEST_MAIN_BRANCH_NAME)
+
+        expect:
+        // Branch exists
+        client.branchExists(repository, TEST_MAIN_BRANCH_NAME)
+        client.refExists(repository, TEST_MAIN_BRANCH_NAME)
+
+        // Tag exists
+        client.tagExists(repository, tagName)
+        client.refExists(repository, tagName)
+        !client.branchExists(repository, tagName)
+
+        // Commit ID exists
+        client.refExists(repository, commitId)
+        !client.branchExists(repository, commitId)
+        !client.tagExists(repository, commitId)
+
+        // Non-existent ref
+        !client.refExists(repository, "non-existent-ref-${UUID.randomUUID()}")
+
+        cleanup:
+        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+
+        where:
+        transferMode << transferModes
+    }
+
+    def 'should throw IllegalArgumentException when autoCreateBranchSource is a tag'() {
+        given:
+        def repository = TEST_REPO_NAME
+        def tagName = "test-tag-${UUID.randomUUID().toString().substring(0, 8)}"
+        def newBranchName = "should-fail-branch-${UUID.randomUUID().toString().substring(0, 8)}"
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        // Create a tag to use as (invalid) source
+        client.createTag(repository, tagName, TEST_MAIN_BRANCH_NAME)
+
+        and:
+        def configWithTagAsSource = [
+            lakefs: [
+                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
+                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
+                apiUrl: System.getenv('LAKEFS_API_URL'),
+                autoCreateBranch: true,
+                autoCreateBranchSource: tagName  // Using a tag as source - should fail
+            ],
+            google: [
+                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                project: System.getenv('GOOGLE_PROJECT') ?: ''
+            ]
+        ]
+        Global.config = configWithTagAsSource
+        Global.session = Mock(Session) { getConfig() >> configWithTagAsSource }
+
+        when:
+        lakeFSpath("lakefs://$repository/$newBranchName/test.txt")
+
+        then:
+        def e = thrown(IllegalArgumentException)
+        e.message.contains("'$tagName' is a tag, not a branch")
+        e.message.contains("Tags are immutable references")
+
+        cleanup:
+        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+        Global.config = config
+        Global.session = Mock(Session) { getConfig() >> config }
+    }
+
+    def 'should throw NoSuchFileException when autoCreateBranchSource does not exist'() {
+        given:
+        def nonExistentSource = "non-existent-source-${UUID.randomUUID().toString().substring(0, 8)}"
+        def newBranchName = "should-fail-branch-${UUID.randomUUID().toString().substring(0, 8)}"
+        def configWithBadSource = [
+            lakefs: [
+                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
+                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
+                apiUrl: System.getenv('LAKEFS_API_URL'),
+                autoCreateBranch: true,
+                autoCreateBranchSource: nonExistentSource  // Non-existent source - should fail
+            ],
+            google: [
+                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                project: System.getenv('GOOGLE_PROJECT') ?: ''
+            ]
+        ]
+        Global.config = configWithBadSource
+        Global.session = Mock(Session) { getConfig() >> configWithBadSource }
+
+        when:
+        lakeFSpath("lakefs://$TEST_REPO_NAME/$newBranchName/test.txt")
+
+        then:
+        def e = thrown(NoSuchFileException)
+        e.message.contains("branch '$nonExistentSource' does not exist")
+
+        cleanup:
+        Global.config = config
+        Global.session = Mock(Session) { getConfig() >> config }
+    }
+
 }

@@ -7,7 +7,7 @@ import nextflow.plugin.BasePlugin
 import org.pf4j.PluginWrapper
 
 /**
- * Implements the Hello plugins entry point
+ * Implements the NextflowLakeFSPlugin plugins entry point
  *
  * @author rpohes@gmail.com
  */
