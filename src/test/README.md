@@ -100,3 +100,4 @@ Before running, ensure the following secrets are configured in your repository s
   - File operations (read, write, copy, move, delete)
   - Directory operations
   - Auto-create branch feature tests
+  - Tag and commit ID support tests (tags are created/deleted dynamically during tests)
