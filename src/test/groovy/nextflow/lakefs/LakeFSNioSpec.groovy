@@ -1338,8 +1338,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
         // in the test resources
         where:
-        fileSize     << [50 * 1024, 11 * 1024 * 1024]
-        transferMode << transferModes
+        [fileSize, transferMode] << [[50 * 1024, 11 * 1024 * 1024], [transferModes]].combinations()
     }
 
     @Unroll
