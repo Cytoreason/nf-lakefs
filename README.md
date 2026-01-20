@@ -103,3 +103,7 @@ workflow {
 ```shell
 nextflow run main.nf 
 ```
+
+## Support & contributions
+
+This Nextflow plugin is currently published for **read-only usage**.
