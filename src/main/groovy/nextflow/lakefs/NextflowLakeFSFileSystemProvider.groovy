@@ -820,8 +820,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                 def targetAttributes = targetPhysicalPath.getFileSystem().provider().getFileAttributeView(targetPhysicalPath, BasicFileAttributeView.class)
                         .readAttributes()
                 if (targetPhysicalPath.getScheme() == "gs") { // google backed
-                    log.trace("resolved ${targetAttributes.etag().orNull()} etag")
-                    return [checksum: targetAttributes.etag().orNull(), size: targetAttributes.size()]
+                    log.trace("resolved ${targetAttributes.info.getMd5ToHexString()} etag")
+                    return [checksum: targetAttributes.info.getMd5ToHexString(), size: targetAttributes.size()]
                 } else if (targetPhysicalPath.getScheme() == "s3") {
                     throw new NotSupportedException("s3 backed file system still not supported by lakefs plugin")
                 } else if (targetPhysicalPath.getScheme() == "az") {
