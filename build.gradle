@@ -3,7 +3,7 @@ plugins {
     id 'jacoco'
 }
 
-version = '0.3.1'
+version = '0.3.2'
 
 dependencies {
     compileOnly 'org.slf4j:slf4j-api:2.0.16'
@@ -17,7 +17,7 @@ nextflowPlugin {
 
     provider = 'cytoreason'
     className = 'nextflow.lakefs.NextflowLakeFSPlugin'
-    description = 'This plugin integrates Nextflow with lakeFS, allowing you to use `lakefs://` URIs as inputs and outputs in your pipelines. It brings the power of data versioning, reproducibility, and atomic operations to your Nextflow workflows.'
+    description = 'This plugin integrates Nextflow with lakeFS, allowing you to use `lakefs://` URIs as inputs and outputs in your pipelines. It brings the power of data versioning, reproducibility, and atomic operations to your Nextflow workflows. Detailed description at : https://github.com/CytoReason-Releases/nf-lakefs'
     extensionPoints = [
             'nextflow.lakefs.NextflowLakeFSPathFactory',
             'nextflow.lakefs.LakeFSConfig'
