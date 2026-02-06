@@ -393,9 +393,11 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         Files.write(gcsSource, TEXT.bytes)
 
 
+        def provider = lakeFSPath.lakeFSFileSystem.provider()
+        provider.allowLinkingDifferentNamespace = true
         and:
         // Files copy doesnt work since cloudstoragepath fails to copy to a posix file system path
-        lakeFSPath.lakeFSFileSystem.provider().copy(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
+        provider.copy(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
         //        Files.copy(source, target)
         then:
         //        existsPath(source)
@@ -408,6 +410,9 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
         cleanup:
         if (pathExists) deleteObject(repository, branch, objectPath)
+        // Reset config
+        provider.allowLinkingDifferentNamespace = false
+
 
         where:
         transferMode << transferModes
