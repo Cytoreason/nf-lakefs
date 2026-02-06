@@ -19,6 +19,7 @@ import spock.lang.Unroll
 import java.nio.charset.Charset
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
@@ -32,11 +33,12 @@ import java.nio.file.attribute.BasicFileAttributes
  */
 @Slf4j
 @Timeout(120)
-@Requires({ System.getenv('LAKEFS_ACCESS_KEY')
-        && System.getenv('LAKEFS_SECRET_KEY')
-        && System.getenv('LAKEFS_API_URL')
-        && System.getenv('LAKEFS_TEST_REPO')
-        && System.getenv('LAKEFS_TEST_BRANCH')
+@Requires({
+    System.getenv('LAKEFS_ACCESS_KEY')
+            && System.getenv('LAKEFS_SECRET_KEY')
+            && System.getenv('LAKEFS_API_URL')
+            && System.getenv('LAKEFS_TEST_REPO')
+            && System.getenv('LAKEFS_TEST_BRANCH')
 })
 class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
@@ -60,16 +62,16 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
     private static Map loadConfig() {
         return [
-            lakefs: [
-                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
-                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
-                apiUrl: System.getenv('LAKEFS_API_URL'),
-                transferMode: System.getenv('LAKEFS_TRANSFER_MODE') ?: 'signed_url'
-            ],
-            google: [
-                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                project: System.getenv('GOOGLE_PROJECT') ?: ''
-            ]
+                lakefs: [
+                        accessKey   : System.getenv('LAKEFS_ACCESS_KEY'),
+                        secretKey   : System.getenv('LAKEFS_SECRET_KEY'),
+                        apiUrl      : System.getenv('LAKEFS_API_URL'),
+                        transferMode: System.getenv('LAKEFS_TRANSFER_MODE') ?: 'signed_url'
+                ],
+                google: [
+                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                ]
         ]
     }
 
@@ -367,6 +369,93 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
         cleanup:
         if (pathExists) deleteObject(repository, branch, objectPath)
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') })
+    def 'should link a remote file to a repo which is backed by same file system but not the same bucket'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world!"
+
+        when:
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "data/file.txt"
+        def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+        def client = new LakeFSSDKClient(config.lakefs)
+
+
+        and:
+        final gcsSource = FileHelper.asPath("gs://cr-ron-test/nextflow-test/file.txt")
+        Files.write(gcsSource, TEXT.bytes)
+
+
+        and:
+        // Files copy doesnt work since cloudstoragepath fails to copy to a posix file system path
+        lakeFSPath.lakeFSFileSystem.provider().copy(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
+        //        Files.copy(source, target)
+        then:
+        //        existsPath(source)
+        def pathExists = existsPath(repository, branch, objectPath)
+//            readObject(lakeFSPath) == TEXT // we need to make sure lakefs have permission to a bucket which is not the same
+
+        // Verify that the object is actually linked (physical address matches source)
+        def stats = client.getObjectStats(repository, branch, objectPath, false)
+        FileHelper.asPath(stats.physicalAddress) == gcsSource
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') })
+    def 'should link a remote file to a repo which is backed by same file system and the same bucket'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world On GCS!"
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "data/linked-file.txt"
+        def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+
+        and:
+        // Get the repository storage namespace to ensure we are on the same backend
+        def client = new LakeFSSDKClient(config.lakefs)
+        def storageNamespace = client.getRepositoryStorageNamespace(repository)
+        def storageUri = URI.create(storageNamespace)
+
+        // Construct a source path in the same bucket but different prefix
+        // We assume we have write access to the bucket
+        def bucket = storageUri.authority
+        def sourcePathStr = "${storageUri.scheme}://${bucket}/nf-test-data/source-file-${UUID.randomUUID()}.txt"
+        def gcsSource = FileHelper.asPath(sourcePathStr)
+
+        Files.write(gcsSource, TEXT.bytes)
+
+        when:
+        // Use LinkOption.NOFOLLOW_LINKS to trigger the optimization
+        lakeFSPath.lakeFSFileSystem.provider().copy(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
+
+        then:
+        def pathExists = existsPath(repository, branch, objectPath)
+        readObject(lakeFSPath) == TEXT
+
+        // Verify that the object is actually linked (physical address matches source)
+        def stats = client.getObjectStats(repository, branch, objectPath, false)
+        stats.physicalAddress == sourcePathStr
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+        try {
+            Files.deleteIfExists(gcsSource)
+        } catch (Exception e) {
+            log.warn("Failed to delete source file", e)
+        }
 
         where:
         transferMode << transferModes
@@ -1447,16 +1536,16 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
     def 'should throw NoSuchFileException when branch does not exist and autoCreateBranch is disabled'() {
         given:
         def configWithoutAutoCreate = [
-            lakefs: [
-                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
-                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
-                apiUrl: System.getenv('LAKEFS_API_URL'),
-                autoCreateBranch: false
-            ],
-            google: [
-                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                project: System.getenv('GOOGLE_PROJECT') ?: ''
-            ]
+                lakefs: [
+                        accessKey       : System.getenv('LAKEFS_ACCESS_KEY'),
+                        secretKey       : System.getenv('LAKEFS_SECRET_KEY'),
+                        apiUrl          : System.getenv('LAKEFS_API_URL'),
+                        autoCreateBranch: false
+                ],
+                google: [
+                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                ]
         ]
         Global.config = configWithoutAutoCreate
         Global.session = Mock(Session) { getConfig() >> configWithoutAutoCreate }
@@ -1474,17 +1563,17 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         given:
         def newBranchName = "auto-created-branch-${UUID.randomUUID().toString().substring(0, 8)}"
         def configWithAutoCreate = [
-            lakefs: [
-                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
-                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
-                apiUrl: System.getenv('LAKEFS_API_URL'),
-                autoCreateBranch: true,
-                autoCreateBranchSource: TEST_MAIN_BRANCH_NAME
-            ],
-            google: [
-                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                project: System.getenv('GOOGLE_PROJECT') ?: ''
-            ]
+                lakefs: [
+                        accessKey             : System.getenv('LAKEFS_ACCESS_KEY'),
+                        secretKey             : System.getenv('LAKEFS_SECRET_KEY'),
+                        apiUrl                : System.getenv('LAKEFS_API_URL'),
+                        autoCreateBranch      : true,
+                        autoCreateBranchSource: TEST_MAIN_BRANCH_NAME
+                ],
+                google: [
+                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                ]
         ]
         Global.config = configWithAutoCreate
         Global.session = Mock(Session) { getConfig() >> configWithAutoCreate }
@@ -1503,9 +1592,15 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
         cleanup:
         // Delete the test file
-        try { deleteObject(TEST_REPO_NAME, newBranchName, "test-file.txt") } catch (Exception ignored) {}
+        try {
+            deleteObject(TEST_REPO_NAME, newBranchName, "test-file.txt")
+        } catch (Exception ignored) {
+        }
         // Delete the auto-created branch
-        try { client.branchesApi.deleteBranch(TEST_REPO_NAME, newBranchName).execute() } catch (Exception ignored) {}
+        try {
+            client.branchesApi.deleteBranch(TEST_REPO_NAME, newBranchName).execute()
+        } catch (Exception ignored) {
+        }
         // Reset config
         Global.config = config
         Global.session = Mock(Session) { getConfig() >> config }
@@ -1515,17 +1610,17 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         given:
         def newBranchName = "custom-source-branch-${UUID.randomUUID().toString().substring(0, 8)}"
         def configWithCustomSource = [
-            lakefs: [
-                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
-                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
-                apiUrl: System.getenv('LAKEFS_API_URL'),
-                autoCreateBranch: true,
-                autoCreateBranchSource: TEST_MAIN_BRANCH_NAME
-            ],
-            google: [
-                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                project: System.getenv('GOOGLE_PROJECT') ?: ''
-            ]
+                lakefs: [
+                        accessKey             : System.getenv('LAKEFS_ACCESS_KEY'),
+                        secretKey             : System.getenv('LAKEFS_SECRET_KEY'),
+                        apiUrl                : System.getenv('LAKEFS_API_URL'),
+                        autoCreateBranch      : true,
+                        autoCreateBranchSource: TEST_MAIN_BRANCH_NAME
+                ],
+                google: [
+                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                ]
         ]
         Global.config = configWithCustomSource
         Global.session = Mock(Session) { getConfig() >> configWithCustomSource }
@@ -1542,8 +1637,14 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         client.branchExists(TEST_REPO_NAME, newBranchName)
 
         cleanup:
-        try { deleteObject(TEST_REPO_NAME, newBranchName, "custom-source-test.txt") } catch (Exception ignored) {}
-        try { client.branchesApi.deleteBranch(TEST_REPO_NAME, newBranchName).execute() } catch (Exception ignored) {}
+        try {
+            deleteObject(TEST_REPO_NAME, newBranchName, "custom-source-test.txt")
+        } catch (Exception ignored) {
+        }
+        try {
+            client.branchesApi.deleteBranch(TEST_REPO_NAME, newBranchName).execute()
+        } catch (Exception ignored) {
+        }
         Global.config = config
         Global.session = Mock(Session) { getConfig() >> config }
     }
@@ -1589,8 +1690,14 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         new String(Files.readAllBytes(tagPath)) == TEXT
 
         cleanup:
-        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
-        try { client.deleteBranch(repository, testBranchName) } catch (Exception ignored) {}
+        try {
+            client.deleteTag(repository, tagName)
+        } catch (Exception ignored) {
+        }
+        try {
+            client.deleteBranch(repository, testBranchName)
+        } catch (Exception ignored) {
+        }
 
         where:
         transferMode << transferModes
@@ -1613,7 +1720,10 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         !client.branchExists(repository, tagName) // tag is not a branch
 
         cleanup:
-        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+        try {
+            client.deleteTag(repository, tagName)
+        } catch (Exception ignored) {
+        }
 
         where:
         transferMode << transferModes
@@ -1631,16 +1741,16 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
         and:
         def configWithoutAutoCreate = [
-            lakefs: [
-                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
-                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
-                apiUrl: System.getenv('LAKEFS_API_URL'),
-                autoCreateBranch: false
-            ],
-            google: [
-                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                project: System.getenv('GOOGLE_PROJECT') ?: ''
-            ]
+                lakefs: [
+                        accessKey       : System.getenv('LAKEFS_ACCESS_KEY'),
+                        secretKey       : System.getenv('LAKEFS_SECRET_KEY'),
+                        apiUrl          : System.getenv('LAKEFS_API_URL'),
+                        autoCreateBranch: false
+                ],
+                google: [
+                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                ]
         ]
         Global.config = configWithoutAutoCreate
         Global.session = Mock(Session) { getConfig() >> configWithoutAutoCreate }
@@ -1654,7 +1764,10 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         Files.exists(path)
 
         cleanup:
-        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+        try {
+            client.deleteTag(repository, tagName)
+        } catch (Exception ignored) {
+        }
         Global.config = config
         Global.session = Mock(Session) { getConfig() >> config }
     }
@@ -1691,7 +1804,10 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         new String(Files.readAllBytes(commitPath)) == TEXT
 
         cleanup:
-        try { client.deleteBranch(repository, testBranchName) } catch (Exception ignored) {}
+        try {
+            client.deleteBranch(repository, testBranchName)
+        } catch (Exception ignored) {
+        }
 
         where:
         transferMode << transferModes
@@ -1730,7 +1846,10 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         !client.refExists(repository, "non-existent-ref-${UUID.randomUUID()}")
 
         cleanup:
-        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+        try {
+            client.deleteTag(repository, tagName)
+        } catch (Exception ignored) {
+        }
 
         where:
         transferMode << transferModes
@@ -1749,17 +1868,17 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
         and:
         def configWithTagAsSource = [
-            lakefs: [
-                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
-                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
-                apiUrl: System.getenv('LAKEFS_API_URL'),
-                autoCreateBranch: true,
-                autoCreateBranchSource: tagName  // Using a tag as source - should fail
-            ],
-            google: [
-                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                project: System.getenv('GOOGLE_PROJECT') ?: ''
-            ]
+                lakefs: [
+                        accessKey             : System.getenv('LAKEFS_ACCESS_KEY'),
+                        secretKey             : System.getenv('LAKEFS_SECRET_KEY'),
+                        apiUrl                : System.getenv('LAKEFS_API_URL'),
+                        autoCreateBranch      : true,
+                        autoCreateBranchSource: tagName  // Using a tag as source - should fail
+                ],
+                google: [
+                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                ]
         ]
         Global.config = configWithTagAsSource
         Global.session = Mock(Session) { getConfig() >> configWithTagAsSource }
@@ -1773,7 +1892,10 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         e.message.contains("Tags are immutable references")
 
         cleanup:
-        try { client.deleteTag(repository, tagName) } catch (Exception ignored) {}
+        try {
+            client.deleteTag(repository, tagName)
+        } catch (Exception ignored) {
+        }
         Global.config = config
         Global.session = Mock(Session) { getConfig() >> config }
     }
@@ -1783,17 +1905,17 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         def nonExistentSource = "non-existent-source-${UUID.randomUUID().toString().substring(0, 8)}"
         def newBranchName = "should-fail-branch-${UUID.randomUUID().toString().substring(0, 8)}"
         def configWithBadSource = [
-            lakefs: [
-                accessKey: System.getenv('LAKEFS_ACCESS_KEY'),
-                secretKey: System.getenv('LAKEFS_SECRET_KEY'),
-                apiUrl: System.getenv('LAKEFS_API_URL'),
-                autoCreateBranch: true,
-                autoCreateBranchSource: nonExistentSource  // Non-existent source - should fail
-            ],
-            google: [
-                region: System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                project: System.getenv('GOOGLE_PROJECT') ?: ''
-            ]
+                lakefs: [
+                        accessKey             : System.getenv('LAKEFS_ACCESS_KEY'),
+                        secretKey             : System.getenv('LAKEFS_SECRET_KEY'),
+                        apiUrl                : System.getenv('LAKEFS_API_URL'),
+                        autoCreateBranch      : true,
+                        autoCreateBranchSource: nonExistentSource  // Non-existent source - should fail
+                ],
+                google: [
+                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                ]
         ]
         Global.config = configWithBadSource
         Global.session = Mock(Session) { getConfig() >> configWithBadSource }

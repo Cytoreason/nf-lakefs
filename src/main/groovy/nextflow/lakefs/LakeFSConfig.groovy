@@ -38,6 +38,9 @@ class LakeFSConfig implements ConfigScope {
     @ConfigOption
     final String connectTimeout
 
+    @ConfigOption
+    final Boolean allowLinkingDifferentNamespace
+
     LakeFSConfig() {
         this.apiUrl = null
         this.accessKey = null
@@ -47,6 +50,7 @@ class LakeFSConfig implements ConfigScope {
         this.autoCreateBranchSource = 'main'
         this.readTimeout = '60s'
         this.connectTimeout = '30s'
+        this.allowLinkingDifferentNamespace = false
     }
 
     LakeFSConfig(Map opts, Map env = [:]) {
@@ -58,5 +62,6 @@ class LakeFSConfig implements ConfigScope {
         this.autoCreateBranchSource = opts.autoCreateBranchSource ?: 'main'
         this.readTimeout = opts.readTimeout ?: '60s'
         this.connectTimeout = opts.connectTimeout ?: '30s'
+        this.allowLinkingDifferentNamespace = opts.allowLinkingDifferentNamespace as Boolean ?: false
     }
 }
