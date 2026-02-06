@@ -37,7 +37,6 @@ import java.nio.file.attribute.FileAttributeView
 import java.nio.file.attribute.FileTime
 import java.nio.file.spi.FileSystemProvider
 import java.util.concurrent.TimeUnit
-import java.util.regex.Pattern
 
 import static java.lang.String.format
 
@@ -137,7 +136,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 
         Map<String, String> tags = Optional.ofNullable(lakeFSTarget.tags)
                 .orElse(Collections.emptyMap())
-        tags = tags + parseHivePartitions(lakeFSTarget.objectPath)
+
         tags = tags.collectEntries { k, v -> [(k.toString()): v.toString()] // needed to convert from GString type to string
         }
         log.trace("tags " + lakeFSTarget.repository() + " " + lakeFSTarget.ref() + " " + lakeFSTarget.objectPath + " " + tags)
@@ -152,24 +151,6 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
         def objectStats = lakeFSClient.linkPhysicalAddress(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath,
                 stagingMetadata)
         log.trace(objectStats)
-    }
-
-    static Map<String, String> parseHivePartitions(String path) {
-        log.debug("Parsing hive partitions for path: $path")
-        Pattern partitionPattern = Pattern.compile("([^/]+)=([^/]+)")
-        def uri = new URI(null, null, path, null, null)
-        def partitionMap = [:]
-
-        def pathOnly = uri.getPath()
-
-        pathOnly.tokenize('/').each { segment ->
-            def matcher = partitionPattern.matcher(segment)
-            if (matcher.matches()) {
-                partitionMap[matcher.group(1)] = matcher.group(2)
-            }
-        }
-        log.debug("Parsed partitions: $partitionMap")
-        partitionMap as Map<String, String>
     }
 
     @Override
@@ -359,17 +340,17 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
         // Check if the source is a tag - tags should not be used as branch source
         if (lakeFSClient.tagExists(repository, autoCreateBranchSource)) {
             throw new IllegalArgumentException(
-                "Invalid 'autoCreateBranchSource' configuration: '$autoCreateBranchSource' is a tag, not a branch. " +
-                "Tags are immutable references and should not be used as the source for auto-creating branches. " +
-                "Please specify a branch name in your lakefs.autoCreateBranchSource configuration."
+                    "Invalid 'autoCreateBranchSource' configuration: '$autoCreateBranchSource' is a tag, not a branch. " +
+                            "Tags are immutable references and should not be used as the source for auto-creating branches. " +
+                            "Please specify a branch name in your lakefs.autoCreateBranchSource configuration."
             )
         }
 
         // Check if the source branch exists
         if (!lakeFSClient.branchExists(repository, autoCreateBranchSource)) {
             throw new NoSuchFileException(
-                "Invalid 'autoCreateBranchSource' configuration: branch '$autoCreateBranchSource' does not exist in repository '$repository'. " +
-                "Please specify an existing branch name in your lakefs.autoCreateBranchSource configuration."
+                    "Invalid 'autoCreateBranchSource' configuration: branch '$autoCreateBranchSource' does not exist in repository '$repository'. " +
+                            "Please specify an existing branch name in your lakefs.autoCreateBranchSource configuration."
             )
         }
     }
