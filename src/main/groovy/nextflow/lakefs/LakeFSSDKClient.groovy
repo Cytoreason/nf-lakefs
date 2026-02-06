@@ -5,6 +5,7 @@ import io.lakefs.clients.sdk.ApiException
 import io.lakefs.clients.sdk.BranchesApi
 import io.lakefs.clients.sdk.CommitsApi
 import io.lakefs.clients.sdk.ObjectsApi
+import io.lakefs.clients.sdk.RepositoriesApi
 import io.lakefs.clients.sdk.StagingApi
 import io.lakefs.clients.sdk.TagsApi
 import io.lakefs.clients.sdk.model.BranchCreation
@@ -30,6 +31,7 @@ class LakeFSSDKClient {
     BranchesApi branchesApi
     TagsApi tagsApi
     CommitsApi commitsApi
+    RepositoriesApi repositoriesApi
 
     LakeFSSDKClient(lakeFSConfig) {
 
@@ -48,6 +50,7 @@ class LakeFSSDKClient {
         this.branchesApi = new BranchesApi(apiClient)
         this.tagsApi = new TagsApi(apiClient)
         this.commitsApi = new CommitsApi(apiClient)
+        this.repositoriesApi = new RepositoriesApi(apiClient)
     }
 
     StagingLocation getStagingLocation(String repo, String ref, String objectPath, boolean presign) {
@@ -249,5 +252,9 @@ class LakeFSSDKClient {
             }
             throw e
         }
+    }
+
+    String getRepositoryStorageNamespace(String repo) {
+        return repositoriesApi.getRepository(repo).execute().storageNamespace
     }
 }

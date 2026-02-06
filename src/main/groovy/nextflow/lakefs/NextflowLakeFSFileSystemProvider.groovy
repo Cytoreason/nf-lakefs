@@ -58,6 +58,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     TransferMode transferMode
     boolean autoCreateBranch = false
     String autoCreateBranchSource = 'main'
+    boolean allowLinkingDifferentNamespace = false
 
     @Override
     boolean canUpload(Path source, Path target) {
@@ -106,6 +107,20 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             CopyMoveHelper.copyDirectory(source, remoteDestination, options)
         } else {
             lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
+
+            if (options != null && options.contains(LinkOption.NOFOLLOW_LINKS)) {
+                String storageNamespace = lakeFSClient.getRepositoryStorageNamespace(lakeFSTarget.repository())
+                if (isSameBackendStorage(source, storageNamespace)) {
+                    log.debug("******** linking " + source + " to " + lakeFSTarget)
+                    def stagingLocation = new StagingLocation()
+                    stagingLocation.physicalAddress = source.toUri().toString()
+                    linkLakeFSToBackendFile(source, lakeFSTarget, stagingLocation)
+                    return
+                } else {
+                    log.warn("******** failure on request linking " + source + " to " + lakeFSTarget + " since backend storage is not the same")
+                }
+            }
+
             def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
 
             log.debug("******** staging " + lakeFSTarget + " to " + stagingLocation.physicalAddress.toString())
@@ -128,8 +143,22 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                 default: throw new RuntimeException("only signed url and physical path are supported")
             }
         }
+    }
 
-
+    private boolean isSameBackendStorage(Path source, String storageNamespace) {
+        try {
+            def sourceUri = source.toUri()
+            def storageUri = URI.create(storageNamespace)
+            if (sourceUri.scheme != storageUri.scheme) {
+                return false
+            }
+            if (!allowLinkingDifferentNamespace) {
+                return sourceUri.authority == storageUri.authority
+            }
+            return true
+        } catch (Throwable t) {
+            return false
+        }
     }
 
     private void linkLakeFSToBackendFile(Object physicalPathAttributesHolder, NextflowLakeFSPath lakeFSTarget, StagingLocation stagingLocation) {
@@ -264,6 +293,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             transferMode = TransferMode.fromString(lakeFSConfig.transferMode, TransferMode.signedURL)
             autoCreateBranch = lakeFSConfig.autoCreateBranch ?: false
             autoCreateBranchSource = lakeFSConfig.autoCreateBranchSource ?: 'main'
+            allowLinkingDifferentNamespace = lakeFSConfig.allowLinkingDifferentNamespace ?: false
             lakeFSClient = new LakeFSSDKClient(lakeFSConfig)
 
             // Check/create ref once at file system creation
