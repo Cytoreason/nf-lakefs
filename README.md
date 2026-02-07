@@ -49,7 +49,7 @@ lakefs {
 | `transferMode` | No | `signed_url` | Transfer mode: `signed_url` or `physical_path` |
 | `autoCreateBranch` | No | `false` | Automatically create branch if it doesn't exist when writing |
 | `autoCreateBranchSource` | No | `main` | Source branch to create new branches from |
-
+| `allowedSchemaBucketForLinking` | No | `[]` | Whitelist of cloud storage scheme+bucket prefixes (e.g. `s3://bucket`, `gs://bucket`) that are allowed to be treated as the same backend for linking when using `physical_path` transfer mode |
 ### Auto-Create Branch
 
 When `autoCreateBranch` is enabled, the plugin will automatically create a new branch if it doesn't exist when you attempt to write to it. This is useful for workflows that dynamically create output branches.
@@ -65,6 +65,22 @@ lakefs {
 ```
 
 With this configuration, writing to `lakefs://my-repo/new-branch/file.txt` will automatically create `new-branch` from `main` if it doesn't already exist.
+
+### allowedSchemaBucketForLinking
+
+When using `java.nio.file.Files.createLink()` or when using Link mode on publishing, the plugin may need to determine whether two paths refer to the same underlying cloud storage backend .
+
+The `allowedSchemaBucketForLinking` option allows you to explicitly whitelist cloud storage **scheme + bucket** combinations that are allowed to be treated as equivalent backends for linking as source for a target repository which has a namespace defined with different backed storage.
+
+As an example you might have a repo lakefs://repo1 which has a namespace defined for gs://bucket-back so you can link files to this repo from ; 'gs://bucket1' and 'gs://bucket2' by setting :  
+```groovy
+lakefs {
+    allowedSchemaBucketForLinking = [
+            'gs://bucket1',
+            'gs://bucket2'
+    ]
+}
+```
 
 ## Usage Example
 
