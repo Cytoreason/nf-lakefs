@@ -397,7 +397,8 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         provider.allowLinkingDifferentNamespace = true
         and:
         // Files copy doesnt work since cloudstoragepath fails to copy to a posix file system path
-        provider.copy(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
+        Files.createLink(lakeFSPath, gcsSource)
+//        provider.copy(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
         //        Files.copy(source, target)
         then:
         //        existsPath(source)
@@ -443,8 +444,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         Files.write(gcsSource, TEXT.bytes)
 
         when:
-        // Use LinkOption.NOFOLLOW_LINKS to trigger the optimization
-        lakeFSPath.lakeFSFileSystem.provider().copy(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
+        Files.createLink(lakeFSPath, gcsSource)
 
         then:
         def pathExists = existsPath(repository, branch, objectPath)
@@ -461,6 +461,45 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         } catch (Exception e) {
             log.warn("Failed to delete source file", e)
         }
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Ignore("lakefs to lakefs link is not supported yet (0.4.X")
+    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') })
+    def 'should link a lakefs file to another lakefs file (zero copy)'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world!"
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def sourcePath = "data/source-file.txt"
+        def targetPath = "data/target-file.txt"
+        def lakeFSSource = lakeFSpath("lakefs://e2-demo-model/1.2.3/config/dataset/E-MTAB-184/config.yaml")
+        def lakeFSTarget = lakeFSpath("lakefs://$repository/$branch/$targetPath")
+        def client = new LakeFSSDKClient(config.lakefs)
+
+//        and:
+//        Files.write(lakeFSSource, TEXT.bytes)
+
+        when:
+        // Use LinkOption.NOFOLLOW_LINKS to trigger the optimization
+        Files.createLink(lakeFSTarget, lakeFSSource)
+//        lakeFSTarget.lakeFSFileSystem.provider().copy(lakeFSSource, lakeFSTarget, LinkOption.NOFOLLOW_LINKS)
+
+        then:
+        def pathExists = existsPath(repository, branch, targetPath)
+        readObject(lakeFSTarget) == TEXT
+
+        // Verify that the object is actually linked (physical address matches source)
+        def sourceStats = client.getObjectStats(repository, branch, sourcePath, false)
+        def targetStats = client.getObjectStats(repository, branch, targetPath, false)
+        targetStats.physicalAddress == sourceStats.physicalAddress
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, targetPath)
+        deleteObject(repository, branch, sourcePath)
 
         where:
         transferMode << transferModes

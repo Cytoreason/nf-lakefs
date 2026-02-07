@@ -107,20 +107,6 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             CopyMoveHelper.copyDirectory(source, remoteDestination, options)
         } else {
             lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
-
-            if (options != null && options.contains(LinkOption.NOFOLLOW_LINKS)) {
-                String storageNamespace = lakeFSClient.getRepositoryStorageNamespace(lakeFSTarget.repository())
-                if (isSameBackendStorage(source, storageNamespace)) {
-                    log.debug("******** linking " + source + " to " + lakeFSTarget)
-                    def stagingLocation = new StagingLocation()
-                    stagingLocation.physicalAddress = source.toUri().toString()
-                    linkLakeFSToBackendFile(source, lakeFSTarget, stagingLocation)
-                    return
-                } else {
-                    log.warn("******** failure on request linking " + source + " to " + lakeFSTarget + " since backend storage is not the same")
-                }
-            }
-
             def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
 
             log.debug("******** staging " + lakeFSTarget + " to " + stagingLocation.physicalAddress.toString())
@@ -275,6 +261,33 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
         }
 
         log.debug "Created lakeFS file system provider | apiUrl=$apiUrl"
+    }
+
+    @Override
+    void createLink(Path lakefsLink, Path existingSource) throws IOException {
+        final NextflowLakeFSPath lakeFSTarget = (NextflowLakeFSPath) lakefsLink
+        String storageNamespace = lakeFSClient.getRepositoryStorageNamespace(lakeFSTarget.repository())
+        def sourcePhysicalPath = existingSource
+
+        if (existingSource instanceof NextflowLakeFSPath) {
+            // todo ron >> lakefs source is not well supported yet
+            //  because the lakefs backend storage fails when used as staged backend
+            def lakefsSource = (NextflowLakeFSPath) existingSource
+            final sourceRepo = lakefsSource.repository()
+            final sourceRef = lakefsSource.ref()
+            final sourcePath = lakefsSource.objectPath
+            def sourceObjectStats = lakeFSClient.getPathStats(sourceRepo, sourceRef, sourcePath, false)
+            sourcePhysicalPath = FileHelper.asPath(sourceObjectStats.physicalAddress)
+            log.debug("trying to link file " + sourcePhysicalPath.toUriString() + " to " + lakeFSTarget)
+        }
+        if (isSameBackendStorage(sourcePhysicalPath, storageNamespace)) {
+            log.debug("******** linking physical " + sourcePhysicalPath + " to " + lakeFSTarget)
+            def stagingLocation = new StagingLocation()
+            stagingLocation.physicalAddress = sourcePhysicalPath.toUri().toASCIIString()
+            linkLakeFSToBackendFile(sourcePhysicalPath, lakeFSTarget, stagingLocation)
+        } else {
+            log.warn("******** failure on request linking " + sourcePhysicalPath + " to " + lakeFSTarget + " since backend storage is not the same")
+        }
     }
 
     @Override
@@ -828,7 +841,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
         static getLinkMetadata(Object objectAttributesHolder) {
             if (Path.isAssignableFrom(objectAttributesHolder.getClass())) {
                 def targetPhysicalPath = ((Path) objectAttributesHolder)
-                def targetAttributes = targetPhysicalPath.getFileSystem().provider().getFileAttributeView(targetPhysicalPath, BasicFileAttributeView.class)
+                def provider = targetPhysicalPath.getFileSystem().provider()
+                def targetAttributes = provider.getFileAttributeView(targetPhysicalPath, BasicFileAttributeView.class)
                         .readAttributes()
                 if (targetPhysicalPath.getScheme() == "gs") { // google backed
                     log.trace("resolved ${targetAttributes.info.getMd5ToHexString()} etag")
