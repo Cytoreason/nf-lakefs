@@ -350,12 +350,13 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         when:
         def repository = TEST_REPO_NAME
         def branch = TEST_MAIN_BRANCH_NAME
+        def gcsBucket = GOOGLE_EXT_BUCKET
         def objectPath = "data/file.txt"
         def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
 
 
         and:
-        final gcsSource = FileHelper.asPath("gs://cr-ron-test/nextflow-test/file.txt")
+        final gcsSource = FileHelper.asPath("gs://$gcsBucket/nextflow-test/file.txt")
         Files.write(gcsSource, TEXT.bytes)
 
 
