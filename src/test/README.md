@@ -26,10 +26,11 @@ Integration tests require a running lakeFS instance and are skipped by default w
 
 These are only needed when running tests with `physical_path` transfer mode, which requires the user to be authenticated with the underlying storage (e.g., GCS):
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GOOGLE_PROJECT` | GCP project ID | `""` |
-| `GOOGLE_REGION` | GCP region | `europe-west1` |
+| Variable            | Description         | Default |
+|---------------------|---------------------|---------|
+| `GOOGLE_PROJECT`    | GCP project ID      | `""` |
+| `GOOGLE_REGION`     | GCP region          | `europe-west1` |
+| `GOOGLE_EXT_BUCKET` | GCS external bucket | `""` |
 
 ### Running Locally
 
@@ -84,6 +85,7 @@ Before running, ensure the following secrets are configured in your repository s
 - `LAKEFS_TEST_BRANCH`
 - `GOOGLE_PROJECT` (optional)
 - `GOOGLE_REGION` (optional)
+- `GOOGLE_EXT_BUCKET` (optional)
 
 ## Test Categories
 

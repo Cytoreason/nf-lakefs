@@ -47,6 +47,7 @@ test {
      'LAKEFS_TEST_BRANCH': 'lakefs.testBranch',
      'LAKEFS_TRANSFER_MODE': 'lakefs.transferMode',
      'GOOGLE_PROJECT': 'google.project',
+     'GOOGLE_EXT_BUCKET': 'google.ext_bucket',
      'GOOGLE_REGION': 'google.region'].each { envVar, prop ->
         (project.findProperty(prop) ?: System.getenv(envVar))?.with { environment envVar, it }
     }

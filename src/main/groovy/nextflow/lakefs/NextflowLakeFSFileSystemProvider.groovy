@@ -58,7 +58,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     TransferMode transferMode
     boolean autoCreateBranch = false
     String autoCreateBranchSource = 'main'
-    boolean allowLinkingDifferentNamespace = false
+    List<URI> allowedSchemaBucketsForLinking = []
 
     @Override
     boolean canUpload(Path source, Path target) {
@@ -133,16 +133,27 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 
     private boolean isSameBackendStorage(Path source, String storageNamespace) {
         try {
-            def sourceUri = source.toUri()
-            def storageUri = URI.create(storageNamespace)
-            if (sourceUri.scheme != storageUri.scheme) {
+            URI sourceUri = source.toUri()
+            URI storageUri = URI.create(storageNamespace)
+
+            // must match scheme
+            if (sourceUri.scheme != storageUri.scheme)
                 return false
+
+            // explicit whitelist always wins
+            if (allowedSchemaBucketsForLinking) {
+                log.debug(allowedSchemaBucketsForLinking.join(",") + " is checked for source " + sourceUri)
+                return allowedSchemaBucketsForLinking.any { URI allowed ->
+                    sourceUri.scheme == allowed.scheme &&
+                            sourceUri.authority == allowed.authority
+                }
+
             }
-            if (!allowLinkingDifferentNamespace) {
-                return sourceUri.authority == storageUri.authority
-            }
-            return true
-        } catch (Throwable t) {
+
+            // fallback: same bucket
+            return sourceUri.authority == storageUri.authority
+        }
+        catch (Throwable t) {
             return false
         }
     }
@@ -306,7 +317,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             transferMode = TransferMode.fromString(lakeFSConfig.transferMode, TransferMode.signedURL)
             autoCreateBranch = lakeFSConfig.autoCreateBranch ?: false
             autoCreateBranchSource = lakeFSConfig.autoCreateBranchSource ?: 'main'
-            allowLinkingDifferentNamespace = lakeFSConfig.allowLinkingDifferentNamespace ?: false
+            allowedSchemaBucketsForLinking =
+                    lakeFSConfig.allowedSchemaBucketsForLinking.collect { schemaBucket -> URI.create(schemaBucket.toString()) }
             lakeFSClient = new LakeFSSDKClient(lakeFSConfig)
 
             // Check/create ref once at file system creation

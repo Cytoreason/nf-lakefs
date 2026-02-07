@@ -19,7 +19,6 @@ import spock.lang.Unroll
 import java.nio.charset.Charset
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
@@ -44,6 +43,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
     public static final String TEST_REPO_NAME = System.getenv('LAKEFS_TEST_REPO')
     public static final String TEST_MAIN_BRANCH_NAME = System.getenv('LAKEFS_TEST_BRANCH')
+    public static final String GOOGLE_EXT_BUCKET = System.getenv('GOOGLE_EXT_BUCKET')
 
 
     @Shared
@@ -69,8 +69,9 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
                         transferMode: System.getenv('LAKEFS_TRANSFER_MODE') ?: 'signed_url'
                 ],
                 google: [
-                        region : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
-                        project: System.getenv('GOOGLE_PROJECT') ?: ''
+                        region    : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
+                        project   : System.getenv('GOOGLE_PROJECT') ?: '',
+                        ext_bucket: System.getenv('GOOGLE_EXT_BUCKET') ?: ''
                 ]
         ]
     }
@@ -374,7 +375,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         transferMode << transferModes
     }
 
-    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') })
+    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') && System.getenv('GOOGLE_EXT_BUCKET') })
     def 'should link a remote file to a repo which is backed by same file system but not the same bucket'() {
         given:
         setupConfig(transferMode)
@@ -384,17 +385,19 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         def repository = TEST_REPO_NAME
         def branch = TEST_MAIN_BRANCH_NAME
         def objectPath = "data/file.txt"
+        def gcsBucket = GOOGLE_EXT_BUCKET
         def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
         def client = new LakeFSSDKClient(config.lakefs)
 
 
         and:
-        final gcsSource = FileHelper.asPath("gs://cr-ron-test/nextflow-test/file.txt")
+        final gcsSource = FileHelper.asPath("gs://$gcsBucket/nextflow-test/file.txt")
         Files.write(gcsSource, TEXT.bytes)
 
 
         def provider = lakeFSPath.lakeFSFileSystem.provider()
-        provider.allowLinkingDifferentNamespace = true
+        provider.allowedSchemaBucketsForLinking = ["s3://some-other-bucket","gs://$gcsBucket"]
+                .collect { schemaBucket -> URI.create(schemaBucket.toString()) }
         and:
         // Files copy doesnt work since cloudstoragepath fails to copy to a posix file system path
         Files.createLink(lakeFSPath, gcsSource)
@@ -412,7 +415,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         cleanup:
         if (pathExists) deleteObject(repository, branch, objectPath)
         // Reset config
-        provider.allowLinkingDifferentNamespace = false
+        provider.allowedSchemaBucketsForLinking = []
 
 
         where:

@@ -57,6 +57,7 @@ jobs:
           LAKEFS_TRANSFER_MODE: ${{ inputs.transfer_mode }}
           GOOGLE_PROJECT: ${{ inputs.google_project }}
           GOOGLE_REGION: ${{ inputs.google_region }}
+          GOOGLE_EXT_BUCKET: ${{ inputs.google_ext_bucket }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
