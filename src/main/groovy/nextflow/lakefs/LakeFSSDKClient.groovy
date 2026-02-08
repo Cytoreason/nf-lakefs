@@ -229,13 +229,15 @@ class LakeFSSDKClient {
     boolean refExists(String repo, String ref) {
         // Check if it's a branch
         if (branchExists(repo, ref)) {
-            log.debug("Reference '$ref' exists as a branch in repository '$repo'")
+            if (log.isDebugEnabled())
+                log.debug("Reference '$ref' exists as a branch in repository '$repo'")
             return true
         }
 
         // Check if it's a tag
         if (tagExists(repo, ref)) {
-            log.debug("Reference '$ref' exists as a tag in repository '$repo'")
+            if (log.isDebugEnabled())
+                log.debug("Reference '$ref' exists as a tag in repository '$repo'")
             return true
         }
 
@@ -244,7 +246,8 @@ class LakeFSSDKClient {
             objectsApi.listObjects(repo, ref)
                     .amount(0)
                     .execute()
-            log.debug("Reference '$ref' exists as a commit in repository '$repo'")
+            if (log.isDebugEnabled())
+                log.debug("Reference '$ref' exists as a commit in repository '$repo'")
             return true
         } catch (ApiException e) {
             if (e.getCode() == 404) {

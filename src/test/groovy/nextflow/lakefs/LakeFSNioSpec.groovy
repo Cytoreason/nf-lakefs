@@ -19,6 +19,7 @@ import spock.lang.Unroll
 import java.nio.charset.Charset
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
@@ -397,7 +398,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
 
 
         def provider = lakeFSPath.lakeFSFileSystem.provider()
-        provider.allowedSchemaBucketsForLinking = ["s3://some-other-bucket","gs://$gcsBucket"]
+        provider.allowedSchemaBucketsForLinking = ["s3://some-other-bucket", "gs://$gcsBucket"]
                 .collect { schemaBucket -> URI.create(schemaBucket.toString()) }
         and:
         // Files copy doesnt work since cloudstoragepath fails to copy to a posix file system path
@@ -412,6 +413,98 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         // Verify that the object is actually linked (physical address matches source)
         def stats = client.getObjectStats(repository, branch, objectPath, false)
         FileHelper.asPath(stats.physicalAddress) == gcsSource
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+        // Reset config
+        provider.allowedSchemaBucketsForLinking = []
+
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') && System.getenv('GOOGLE_EXT_BUCKET') })
+    def 'should link a remote file to a repo which is backed by same file system but not the same bucket when using copy'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world!"
+
+        when:
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "data/file.txt"
+        def gcsBucket = GOOGLE_EXT_BUCKET
+        def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+        def client = new LakeFSSDKClient(config.lakefs)
+
+
+        and:
+        final gcsSource = FileHelper.asPath("gs://$gcsBucket/nextflow-test/file.txt")
+        Files.write(gcsSource, TEXT.bytes)
+
+
+        def provider = lakeFSPath.lakeFSFileSystem.provider()
+        provider.allowedSchemaBucketsForLinking = ["s3://some-other-bucket", "gs://$gcsBucket"]
+                .collect { schemaBucket -> URI.create(schemaBucket.toString()) }
+        and:
+
+        FileHelper.copyPath(gcsSource, lakeFSPath)
+
+        then:
+        //        existsPath(source)
+        def pathExists = existsPath(repository, branch, objectPath)
+//        readObject(lakeFSPath) == TEXT // we need to make sure lakefs have permission to a bucket which is not the same
+
+        // Verify that the object is actually linked (physical address matches source)
+        def stats = client.getObjectStats(repository, branch, objectPath, false)
+        FileHelper.asPath(stats.physicalAddress) == gcsSource
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+        // Reset config
+        provider.allowedSchemaBucketsForLinking = []
+
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') && System.getenv('GOOGLE_EXT_BUCKET') })
+    def 'should NOT link a remote file to a repo which is backed by same file system but not the same bucket when using copy_nofollow but do a content copy'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world!"
+
+        when:
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "data/file.txt"
+        def gcsBucket = GOOGLE_EXT_BUCKET
+        def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+        def client = new LakeFSSDKClient(config.lakefs)
+
+
+        and:
+        final gcsSource = FileHelper.asPath("gs://$gcsBucket/nextflow-test/file.txt")
+        Files.write(gcsSource, TEXT.bytes)
+
+
+        def provider = lakeFSPath.lakeFSFileSystem.provider()
+        provider.allowedSchemaBucketsForLinking = ["s3://some-other-bucket", "gs://$gcsBucket"]
+                .collect { schemaBucket -> URI.create(schemaBucket.toString()) }
+        and:
+
+        FileHelper.copyPath(gcsSource, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
+
+        then:
+        //        existsPath(source)
+        def pathExists = existsPath(repository, branch, objectPath)
+        readObject(lakeFSPath) == TEXT // we need to make sure lakefs have permission to a bucket which is not the same
+
+        // Verify that the object is actually linked (physical address matches source)
+        def stats = client.getObjectStats(repository, branch, objectPath, false)
+        FileHelper.asPath(stats.physicalAddress) != gcsSource
 
         cleanup:
         if (pathExists) deleteObject(repository, branch, objectPath)
