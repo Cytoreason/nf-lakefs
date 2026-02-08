@@ -7,6 +7,7 @@ import io.lakefs.clients.sdk.model.StagingLocation
 import io.lakefs.clients.sdk.model.StagingMetadata
 import nextflow.extension.FilesEx
 import nextflow.file.CopyMoveHelper
+import nextflow.file.CopyOptions
 import nextflow.file.FileHelper
 import nextflow.file.FileSystemTransferAware
 import org.eclipse.jgit.errors.NotSupportedException
@@ -36,6 +37,7 @@ import java.nio.file.attribute.FileAttribute
 import java.nio.file.attribute.FileAttributeView
 import java.nio.file.attribute.FileTime
 import java.nio.file.spi.FileSystemProvider
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 import static java.lang.String.format
@@ -59,6 +61,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     boolean autoCreateBranch = false
     String autoCreateBranchSource = 'main'
     List<URI> allowedSchemaBucketsForLinking = []
+    private final Map<String, String> repoStorageNamespaceCache = new ConcurrentHashMap<>()
 
     @Override
     boolean canUpload(Path source, Path target) {
@@ -83,7 +86,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                     log.debug(it.toString())
                     if (it.pathType == ObjectStats.PathTypeEnum.OBJECT) {
                         def path = FileHelper.asPath(it.physicalAddress)
-                        log.debug("storing file " + path + " in " + localDestination)
+                        if (log.isDebugEnabled())
+                            log.debug("storing file " + path + " in " + localDestination)
                         FilesEx.copyTo(path, localDestination)
                     } else {
                         CopyMoveHelper.copyToForeignTarget(lakeFSPath, localDestination, options)
@@ -103,32 +107,56 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             // default to false if we can't determine
         }
         if (isSourceDirectory) {
-            log.debug("******** staging directory " + lakeFSTarget + " to remote " + remoteDestination.toString())
+            if (log.isDebugEnabled())
+                log.debug("******** staging directory " + lakeFSTarget + " to remote " + remoteDestination.toString())
             CopyMoveHelper.copyDirectory(source, remoteDestination, options)
         } else {
             lakeFSTarget.setCachedAttributes(null)//clear attributes as this might change
-            def stagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
-
-            log.debug("******** staging " + lakeFSTarget + " to " + stagingLocation.physicalAddress.toString())
+            def copyOptions = CopyOptions.parse(options)
+            if (copyOptions.followLinks()) {
+                String targetRepoStorageNamespace = getRepositoryStorageNamespace(lakeFSTarget.repository())
+                if (isSameBackendStorage(source, targetRepoStorageNamespace)) {
+                    if (log.isDebugEnabled())
+                        log.debug("******** linking physical " + source + " to " + lakeFSTarget)
+                    def sourceStagingLocation = new StagingLocation()
+                    sourceStagingLocation.physicalAddress = source.toUri().toASCIIString()
+                    linkLakeFSToBackendFile(source, lakeFSTarget, sourceStagingLocation)
+                    return
+                } else {
+                    if (log.isDebugEnabled())
+                        log.debug("******** cant link " + source + " to " + lakeFSTarget + " for backend storage " + targetRepoStorageNamespace + ". falling back to copy...")
+                }
+            }
+            // Generate a new backend staging location to upload the target to
+            def targetStagingLocation = lakeFSClient.getStagingLocation(lakeFSTarget.repository(), lakeFSTarget.ref(), lakeFSTarget.objectPath, transferMode.presign)
+            if (log.isDebugEnabled())
+                log.debug("******** staging " + lakeFSTarget + " to " + targetStagingLocation.physicalAddress.toString())
             switch (transferMode) {
                 case TransferMode.signedURL:
-                    def conn = SignedUrlWriteOnlyChannel.createHttpConnection(stagingLocation)
+                    def conn = SignedUrlWriteOnlyChannel.createHttpConnection(targetStagingLocation)
                     try (OutputStream os = conn.getOutputStream()) {
                         Files.copy(source, os)  // 👈 directly streams file into request
                     }
-                    def flatHeaders = SignedUrlWriteOnlyChannel.getUploadHttpHeadersAndCloseConnection(conn, stagingLocation)
-                    linkLakeFSToBackendFile(flatHeaders, lakeFSTarget, stagingLocation)
+                    def flatHeaders = SignedUrlWriteOnlyChannel.getUploadHttpHeadersAndCloseConnection(conn, targetStagingLocation)
+                    linkLakeFSToBackendFile(flatHeaders, lakeFSTarget, targetStagingLocation)
                     break
                 case TransferMode.physicalPath:
-                    def cloudStoragePhysicalPath = FileHelper.asPath(stagingLocation.physicalAddress)
+                    def cloudStoragePhysicalPath = FileHelper.asPath(targetStagingLocation.physicalAddress)
 
                     def targetPhysicalPath = FilesEx.copyTo(source, cloudStoragePhysicalPath)
-                    log.debug("******** target cloudStoragePhysicalPath " + targetPhysicalPath + "was created from " + source)
-                    linkLakeFSToBackendFile(targetPhysicalPath, lakeFSTarget, stagingLocation)
+                    if (log.isDebugEnabled())
+                        log.debug("******** target cloudStoragePhysicalPath " + targetPhysicalPath + "was created from " + source)
+                    linkLakeFSToBackendFile(targetPhysicalPath, lakeFSTarget, targetStagingLocation)
                     break
                 default: throw new RuntimeException("only signed url and physical path are supported")
             }
         }
+    }
+
+    private String getRepositoryStorageNamespace(String repository) {
+        return repoStorageNamespaceCache.computeIfAbsent(repository, { repo ->
+            lakeFSClient.getRepositoryStorageNamespace(repo)
+        })
     }
 
     private boolean isSameBackendStorage(Path source, String storageNamespace) {
@@ -142,7 +170,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 
             // explicit whitelist always wins
             if (allowedSchemaBucketsForLinking) {
-                log.debug(allowedSchemaBucketsForLinking.join(",") + " is checked for source " + sourceUri)
+                if (log.isDebugEnabled())
+                    log.debug(allowedSchemaBucketsForLinking.join(",") + " is checked for source " + sourceUri)
                 return allowedSchemaBucketsForLinking.any { URI allowed ->
                     sourceUri.scheme == allowed.scheme &&
                             sourceUri.authority == allowed.authority
@@ -165,7 +194,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 
         tags = tags.collectEntries { k, v -> [(k.toString()): v.toString()] // needed to convert from GString type to string
         }
-        log.trace("tags " + lakeFSTarget.repository() + " " + lakeFSTarget.ref() + " " + lakeFSTarget.objectPath + " " + tags)
+        if (log.isTraceEnabled())
+            log.trace("tags " + lakeFSTarget.repository() + " " + lakeFSTarget.ref() + " " + lakeFSTarget.objectPath + " " + tags)
 
         def objectProperties = CloudProvidersSpecificFactories.getLinkMetadata(physicalPathAttributesHolder)
 
@@ -277,7 +307,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     @Override
     void createLink(Path lakefsLink, Path existingSource) throws IOException {
         final NextflowLakeFSPath lakeFSTarget = (NextflowLakeFSPath) lakefsLink
-        String storageNamespace = lakeFSClient.getRepositoryStorageNamespace(lakeFSTarget.repository())
+        String storageNamespace = getRepositoryStorageNamespace(lakeFSTarget.repository())
         def sourcePhysicalPath = existingSource
 
         if (existingSource instanceof NextflowLakeFSPath) {
@@ -289,10 +319,12 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             final sourcePath = lakefsSource.objectPath
             def sourceObjectStats = lakeFSClient.getPathStats(sourceRepo, sourceRef, sourcePath, false)
             sourcePhysicalPath = FileHelper.asPath(sourceObjectStats.physicalAddress)
-            log.debug("trying to link file " + sourcePhysicalPath.toUriString() + " to " + lakeFSTarget)
+            if (log.isDebugEnabled())
+                log.debug("trying to link file " + sourcePhysicalPath.toUriString() + " to " + lakeFSTarget)
         }
         if (isSameBackendStorage(sourcePhysicalPath, storageNamespace)) {
-            log.debug("******** linking physical " + sourcePhysicalPath + " to " + lakeFSTarget)
+            if (log.isDebugEnabled())
+                log.debug("******** linking physical " + sourcePhysicalPath + " to " + lakeFSTarget)
             def stagingLocation = new StagingLocation()
             stagingLocation.physicalAddress = sourcePhysicalPath.toUri().toASCIIString()
             linkLakeFSToBackendFile(sourcePhysicalPath, lakeFSTarget, stagingLocation)
@@ -369,7 +401,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     protected void ensureRefExists(String repository, String ref) {
         // First check if the ref exists as any type (branch, tag, or commit)
         if (lakeFSClient.refExists(repository, ref)) {
-            log.debug("Reference '$ref' exists in repository '$repository'")
+            if (log.isDebugEnabled())
+                log.debug("Reference '$ref' exists in repository '$repository'")
             return
         }
 
@@ -523,7 +556,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             } else {
                 def sourceObjectStats = lakeFSClient.getPathStats(sourceRepo, sourceRef, sourcePath, transferMode.presign)
                 def sourcePhysicalPath = FileHelper.asPath(sourceObjectStats.physicalAddress)
-                log.debug("copying file " + sourcePhysicalPath + " in " + target)
+                if (log.isDebugEnabled())
+                    log.debug("copying file " + sourcePhysicalPath + " in " + target)
 
                 upload(sourcePhysicalPath, target, options)
             }
@@ -857,7 +891,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                 def targetAttributes = provider.getFileAttributeView(targetPhysicalPath, BasicFileAttributeView.class)
                         .readAttributes()
                 if (targetPhysicalPath.getScheme() == "gs") { // google backed
-                    log.trace("resolved ${targetAttributes.info.getMd5ToHexString()} etag")
+                    if (log.isTraceEnabled())
+                        log.trace("resolved ${targetAttributes.info.getMd5ToHexString()} etag")
                     return [checksum: targetAttributes.info.getMd5ToHexString(), size: targetAttributes.size()]
                 } else if (targetPhysicalPath.getScheme() == "s3") {
                     throw new NotSupportedException("s3 backed file system still not supported by lakefs plugin")
