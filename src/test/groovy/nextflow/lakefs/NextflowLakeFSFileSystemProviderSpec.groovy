@@ -202,4 +202,49 @@ class NextflowLakeFSFileSystemProviderSpec extends Specification {
         provider.autoCreateBranch == false
         provider.autoCreateBranchSource == 'main'
     }
+
+    def 'getLinkMetadata (signed_url) extracts crc32c from x-goog-hash and returns it as hex'() {
+        given: 'GCS upload response headers (crc32c base64 h3UyDA== == hex 8775320c)'
+        def headers = [
+                'x-goog-hash'                 : 'crc32c=h3UyDA==; md5=lkEaTXSekK6TTpoaPHMGgA==',
+                'x-goog-stored-content-length': '20971520',
+                'ETag'                        : '"96411a4d749e90ae934e9a1a3c730680"',
+        ]
+
+        when:
+        def meta = NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.getLinkMetadata(headers)
+
+        then:
+        meta.checksum == '8775320c'
+        meta.size == 20971520L
+    }
+
+    def 'getLinkMetadata (signed_url) matches the x-goog-hash header case-insensitively'() {
+        given:
+        def headers = [
+                'X-Goog-Hash'                 : 'crc32c=h3UyDA==',
+                'x-goog-stored-content-length': '20971520',
+        ]
+
+        when:
+        def meta = NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.getLinkMetadata(headers)
+
+        then:
+        meta.checksum == '8775320c'
+    }
+
+    def 'getLinkMetadata (signed_url) falls back to the unquoted ETag when x-goog-hash is absent'() {
+        given:
+        def headers = [
+                'x-goog-stored-content-length': '20971520',
+                'ETag'                        : '"96411a4d749e90ae934e9a1a3c730680"',
+        ]
+
+        when:
+        def meta = NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.getLinkMetadata(headers)
+
+        then:
+        meta.checksum == '96411a4d749e90ae934e9a1a3c730680'
+        meta.size == 20971520L
+    }
 }

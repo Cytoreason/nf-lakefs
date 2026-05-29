@@ -133,9 +133,16 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                 log.debug("******** staging " + lakeFSTarget + " to " + targetStagingLocation.physicalAddress.toString())
             switch (transferMode) {
                 case TransferMode.signedURL:
-                    def conn = SignedUrlWriteOnlyChannel.createHttpConnection(targetStagingLocation)
+                    // Pass the source size so the PUT streams a fixed-length body instead of buffering it
+                    // all in memory (HttpURLConnection's byte[] is capped at Integer.MAX_VALUE ~= 2 GiB).
+                    // Works for the normal publish (source is a local file). For a lakefs->lakefs copy the
+                    // source is a presigned-HTTPS path whose Files.size() throws (a nextflow XFileSystemProvider
+                    // module-access bug), so we fall back to -1: that path keeps buffering and stays ~2 GiB capped.
+                    long sourceSize = -1
+                    try { sourceSize = Files.size(source) } catch (Throwable ignored) {}
+                    def conn = SignedUrlWriteOnlyChannel.createHttpConnection(targetStagingLocation, sourceSize)
                     try (OutputStream os = conn.getOutputStream()) {
-                        Files.copy(source, os)  // 👈 directly streams file into request
+                        Files.copy(source, os)
                     }
                     def flatHeaders = SignedUrlWriteOnlyChannel.getUploadHttpHeadersAndCloseConnection(conn, targetStagingLocation)
                     linkLakeFSToBackendFile(flatHeaders, lakeFSTarget, targetStagingLocation)
@@ -819,13 +826,18 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
             this.delegate = Channels.newChannel(os)
         }
 
-        static HttpURLConnection createHttpConnection(StagingLocation stagingLocation) {
+        static HttpURLConnection createHttpConnection(StagingLocation stagingLocation, long contentLength = -1) {
             URL url = new URL(stagingLocation.presignedUrl)
 
             def conn = (HttpURLConnection) url.openConnection()
             conn.setDoOutput(true)
             conn.setRequestMethod("PUT")
             conn.setRequestProperty("Content-Type", "application/octet-stream")
+            // When the size is known, stream a fixed-length body. Otherwise HttpURLConnection buffers
+            // the whole request in memory to compute Content-Length — a byte[] capped at
+            // Integer.MAX_VALUE (~2 GiB), which is the real source of the signed_url size limit.
+            if (contentLength >= 0)
+                conn.setFixedLengthStreamingMode(contentLength)
             conn
         }
 
@@ -891,21 +903,31 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                 def targetAttributes = provider.getFileAttributeView(targetPhysicalPath, BasicFileAttributeView.class)
                         .readAttributes()
                 if (targetPhysicalPath.getScheme() == "gs") { // google backed
+                    // crc32c is always populated by GCS — including composite objects, where md5 is null
+                    // (the cause of the HTTP 400). It is content-based and identical across upload modes.
+                    def checksum = targetAttributes.info.getCrc32cToHexString()
                     if (log.isTraceEnabled())
-                        log.trace("resolved ${targetAttributes.info.getMd5ToHexString()} etag")
-                    return [checksum: targetAttributes.info.getMd5ToHexString(), size: targetAttributes.size()]
+                        log.trace("resolved crc32c checksum ${checksum}")
+                    return [checksum: checksum, size: targetAttributes.size()]
                 } else if (targetPhysicalPath.getScheme() == "s3") {
                     throw new NotSupportedException("s3 backed file system still not supported by lakefs plugin")
                 } else if (targetPhysicalPath.getScheme() == "az") {
                     throw new NotSupportedException("az backed file system still not supported by lakefs plugin")
                 }
             } else if (Map.isAssignableFrom(objectAttributesHolder.getClass())) {
-                def targetAttributes = (Map) objectAttributesHolder
-                return [checksum: targetAttributes.ETag, size: Long.parseLong(targetAttributes["x-goog-stored-content-length"].toString())]
-//                if(targetAttributes.hasProperty()){}
+                def headers = (Map) objectAttributesHolder
+                // Header keys are server-cased and vary by HTTP version, so match case-insensitively.
+                def header = { String name -> headers.find { k, v -> k?.toString()?.equalsIgnoreCase(name) }?.value?.toString() }
+                // GCS returns "x-goog-hash: crc32c=<base64>[; md5=<base64>]". Use crc32c, converted to hex,
+                // so signed_url stores the same checksum the gs/Path branch would for identical bytes.
+                def matcher = (header("x-goog-hash") ?: "") =~ 'crc32c=([A-Za-z0-9+/=]+)'
+                def checksum = matcher.find()
+                        ? java.util.Base64.getDecoder().decode(matcher.group(1)).collect { format('%02x', it & 0xff) }.join()
+                        : header("ETag")?.replaceAll('"', '') // fallback: the ETag header is md5-hex (quoted) for simple objects
+                if (log.isTraceEnabled())
+                    log.trace("resolved crc32c checksum ${checksum}")
+                return [checksum: checksum, size: Long.parseLong(header("x-goog-stored-content-length"))]
             }
-
-
         }
 
     }
