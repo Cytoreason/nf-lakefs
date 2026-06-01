@@ -67,6 +67,24 @@ trait LakeFSBaseSpec {
         return result.toString()
     }
 
+    // Stream random bytes straight to disk for large files. Unlike randomText (which builds the whole
+    // payload as an in-memory String, capped at ~2 GiB and int-sized), this takes a long size and never
+    // holds more than the working buffer in memory, so it can produce files larger than 2 GiB.
+    java.nio.file.Path writeRandomFile(java.nio.file.Path file, long size) {
+        def buf = new byte[8 * 1024 * 1024]   // 8 MiB working buffer
+        def rnd = new Random(42)              // fixed seed = reproducible content
+        long written = 0
+        file.withOutputStream { out ->
+            while (written < size) {
+                rnd.nextBytes(buf)
+                int n = (int) Math.min((long) buf.length, size - written)
+                out.write(buf, 0, n)
+                written += n
+            }
+        }
+        return file
+    }
+
     String readChannel(SeekableByteChannel sbc, int buffLen )  {
         def buffer = new ByteArrayOutputStream()
         ByteBuffer bf = ByteBuffer.allocate(buffLen)

@@ -918,15 +918,22 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                 def headers = (Map) objectAttributesHolder
                 // Header keys are server-cased and vary by HTTP version, so match case-insensitively.
                 def header = { String name -> headers.find { k, v -> k?.toString()?.equalsIgnoreCase(name) }?.value?.toString() }
-                // GCS returns "x-goog-hash: crc32c=<base64>[; md5=<base64>]". Use crc32c, converted to hex,
-                // so signed_url stores the same checksum the gs/Path branch would for identical bytes.
-                def matcher = (header("x-goog-hash") ?: "") =~ 'crc32c=([A-Za-z0-9+/=]+)'
-                def checksum = matcher.find()
-                        ? java.util.Base64.getDecoder().decode(matcher.group(1)).collect { format('%02x', it & 0xff) }.join()
-                        : header("ETag")?.replaceAll('"', '') // fallback: the ETag header is md5-hex (quoted) for simple objects
-                if (log.isTraceEnabled())
-                    log.trace("resolved crc32c checksum ${checksum}")
-                return [checksum: checksum, size: Long.parseLong(header("x-goog-stored-content-length"))]
+                def scheme = header("physicalAddress")?.with { URI.create(it).scheme }
+                if (scheme == "gs") { // google backed
+                    // GCS returns "x-goog-hash: crc32c=<base64>[; md5=<base64>]". Use crc32c, converted to hex,
+                    // so signed_url stores the same checksum the gs/Path branch would for identical bytes.
+                    def matcher = (header("x-goog-hash") ?: "") =~ 'crc32c=([A-Za-z0-9+/=]+)'
+                    def checksum = matcher.find()
+                            ? java.util.Base64.getDecoder().decode(matcher.group(1)).collect { format('%02x', it & 0xff) }.join()
+                            : header("ETag")?.replaceAll('"', '') // fallback: the ETag header is md5-hex (quoted) for simple objects
+                    if (log.isTraceEnabled())
+                        log.trace("resolved crc32c checksum ${checksum}")
+                    return [checksum: checksum, size: Long.parseLong(header("x-goog-stored-content-length"))]
+                } else if (scheme == "s3") {
+                    throw new NotSupportedException("s3 backed file system still not supported by lakefs plugin")
+                } else if (scheme == "az") {
+                    throw new NotSupportedException("az backed file system still not supported by lakefs plugin")
+                }
             }
         }
 

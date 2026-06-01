@@ -26,6 +26,7 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.TimeUnit
 
 /**
  *
@@ -1569,6 +1570,40 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         // in the test resources
         where:
         [fileSize, transferMode] << [[50 * 1024, 11 * 1024 * 1024], [transferModes]].combinations()
+    }
+
+    // Proves a >2 GiB upload survives the configured transfer mode (set via gradle.properties). For
+    // signed_url this exercises the upload() fix (setFixedLengthStreamingMode) that lifted the old ~2 GiB
+    // HttpURLConnection cap; physical_path was never capped. Upload-only on purpose: a lakefs->lakefs copy
+    // can't size a presigned source, so it still falls back to the capped path.
+    @Unroll
+    @Timeout(value = 2, unit = TimeUnit.HOURS)   // overrides the class-level @Timeout(120) for the multi-GB transfer
+    def 'should upload a file larger than 2GB'() {
+        given:
+        setupConfig(transferMode)
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "big/over-2gb.data"
+        and: 'a >2 GiB local file, streamed to disk (never held in memory)'
+        def folder = Files.createTempDirectory('bigtest')
+        long size = 2L * 1024 * 1024 * 1024 + 200L * 1024 * 1024   // ~2.2 GiB, safely over Integer.MAX_VALUE (~2 GiB)
+        def file = writeRandomFile(folder.resolve('over-2gb.data'), size)
+
+        when: 'copyPath routes through upload() (signed_url -> setFixedLengthStreamingMode(size))'
+        def target = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+        FileHelper.copyPath(file, target)
+
+        then: 'the >2 GiB PUT completed and the linked object carries the full size'
+        def pathExists = existsPath(repository, branch, objectPath)
+        pathExists
+        Files.size(target) == size
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+        folder?.deleteDir()
+
+        where:
+        transferMode << transferModes
     }
 
     @Unroll

@@ -206,6 +206,7 @@ class NextflowLakeFSFileSystemProviderSpec extends Specification {
     def 'getLinkMetadata (signed_url) extracts crc32c from x-goog-hash and returns it as hex'() {
         given: 'GCS upload response headers (crc32c base64 h3UyDA== == hex 8775320c)'
         def headers = [
+                'physicalAddress'             : 'gs://test-bucket/data/file.txt',
                 'x-goog-hash'                 : 'crc32c=h3UyDA==; md5=lkEaTXSekK6TTpoaPHMGgA==',
                 'x-goog-stored-content-length': '20971520',
                 'ETag'                        : '"96411a4d749e90ae934e9a1a3c730680"',
@@ -222,6 +223,7 @@ class NextflowLakeFSFileSystemProviderSpec extends Specification {
     def 'getLinkMetadata (signed_url) matches the x-goog-hash header case-insensitively'() {
         given:
         def headers = [
+                'physicalAddress'             : 'gs://test-bucket/data/file.txt',
                 'X-Goog-Hash'                 : 'crc32c=h3UyDA==',
                 'x-goog-stored-content-length': '20971520',
         ]
@@ -236,6 +238,7 @@ class NextflowLakeFSFileSystemProviderSpec extends Specification {
     def 'getLinkMetadata (signed_url) falls back to the unquoted ETag when x-goog-hash is absent'() {
         given:
         def headers = [
+                'physicalAddress'             : 'gs://test-bucket/data/file.txt',
                 'x-goog-stored-content-length': '20971520',
                 'ETag'                        : '"96411a4d749e90ae934e9a1a3c730680"',
         ]
