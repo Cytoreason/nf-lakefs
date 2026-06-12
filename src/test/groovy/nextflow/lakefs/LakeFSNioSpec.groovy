@@ -315,6 +315,11 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         transferMode << transferModes
     }
 
+    // NOTE: S3-backed physical_path goes through nf-amazon's S3 NIO (symmetric with how gs:// goes through
+    // nf-google) — the generic copyTo/read path is covered by the GCS physical_path tests above. The only
+    // s3-specific code is reading the crc64nvme back, which is exercised directly against S3 in
+    // S3PhysicalUploaderSpec (it needs no nf-amazon plugin, so it runs in this single-plugin test harness).
+
     def 'copy local file to a repository'() {
         given:
         setupConfig(transferMode)
