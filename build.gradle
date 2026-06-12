@@ -13,13 +13,14 @@ dependencies {
     compileOnly 'software.amazon.awssdk:s3:2.33.2'
     implementation("io.lakefs:sdk:1.72.0")
     testImplementation ('io.nextflow:nf-google:20.12.1-edge')
-    testImplementation 'software.amazon.awssdk:s3:2.33.2'                 // S3PhysicalUploaderSpec: direct crc64nvme check against S3
+    testImplementation 'software.amazon.awssdk:s3:2.33.2'                 // S3ChecksumReaderSpec: direct crc64nvme check against S3
     testImplementation 'software.amazon.awssdk:url-connection-client:2.33.2'  // sync HTTP client for the SDK in tests
 }
 
 nextflowPlugin {
     // S3-backed physical_path needs nf-amazon's AWS SDK v2 (crc64nvme). Nextflow 25.04 ships nf-amazon 2.15.0
     // which still uses SDK v1 for S3 (no crc64nvme); 25.10 ships nf-amazon 3.x with SDK v2. Require >= 25.10.
+    // This would cause a conflict in physical vs signed_url.
     nextflowVersion = '25.10.4'
 
     provider = 'cytoreason'

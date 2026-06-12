@@ -19,7 +19,7 @@ import software.amazon.awssdk.services.s3.model.ObjectAttributes
  * dependency here.
  */
 @Slf4j
-class S3PhysicalUploader {
+class S3ChecksumReader {
 
     /** Return the object's full-object crc64nvme as hex (falls back to the unquoted ETag if none was stored). */
     static String crc64nvmeHex(String s3Address) {
