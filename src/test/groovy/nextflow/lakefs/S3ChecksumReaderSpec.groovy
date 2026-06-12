@@ -21,7 +21,7 @@ import spock.lang.Specification
  * Gated on AWS creds + a writable s3 prefix, e.g. AWS_S3_TEST_PREFIX=s3://p13-cr-data-assets/test
  */
 @Requires({ System.getenv('AWS_ACCESS_KEY_ID') && System.getenv('AWS_S3_TEST_PREFIX') })
-class S3PhysicalUploaderSpec extends Specification {
+class S3ChecksumReaderSpec extends Specification {
 
     def 'a default-client PUT stores crc64nvme when requestChecksumCalculation=when_required, and crc64nvmeHex reads it'() {
         given: 'the global SDK setting the plugin applies, so S3 falls back to its server-side crc64nvme default'
@@ -38,7 +38,7 @@ class S3PhysicalUploaderSpec extends Specification {
         s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(), RequestBody.fromBytes('hello crc64nvme'.bytes))
 
         then: 'our helper reads back a full-object crc64nvme (16 hex) — not crc32 (8 hex) or an md5 ETag (32 hex)'
-        S3PhysicalUploader.crc64nvmeHex(address) ==~ /[0-9a-f]{16}/
+        S3ChecksumReader.crc64nvmeHex(address) ==~ /[0-9a-f]{16}/
 
         cleanup:
         try { s3?.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build()) } catch (ignored) {}

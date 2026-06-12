@@ -925,7 +925,7 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                     // S3 exposes no checksum through NIO file attributes (unlike GCS's crc32c), so read the
                     // server-computed full-object crc64nvme via GetObjectAttributes. The upload stores crc64nvme
                     // because we run the SDK with requestChecksumCalculation=when_required (see NextflowLakeFSPlugin).
-                    def checksum = S3PhysicalUploader.crc64nvmeHex(targetPhysicalPath.toUri().toString())
+                    def checksum = S3ChecksumReader.crc64nvmeHex(targetPhysicalPath.toUri().toString())
                     if (log.isTraceEnabled())
                         log.trace("resolved crc64nvme checksum ${checksum}")
                     return [checksum: checksum, size: targetAttributes.size()]
