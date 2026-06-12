@@ -141,13 +141,19 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                     long sourceSize = -1
                     try { sourceSize = Files.size(source) } catch (Throwable ignored) {}
                     def conn = SignedUrlWriteOnlyChannel.createHttpConnection(targetStagingLocation, sourceSize)
+                    long bytesWritten
                     try (OutputStream os = conn.getOutputStream()) {
-                        Files.copy(source, os)
+                        bytesWritten = Files.copy(source, os)
                     }
+                    // Use the checksum the backend computed over what it actually stored (authoritative):
+                    // crc32c from GCS's x-goog-hash, crc64nvme from S3's x-amz-checksum-crc64nvme. Size is the
+                    // number of bytes we streamed (S3's PUT response carries no object-size header).
                     def flatHeaders = SignedUrlWriteOnlyChannel.getUploadHttpHeadersAndCloseConnection(conn, targetStagingLocation)
-                    linkLakeFSToBackendFile(flatHeaders, lakeFSTarget, targetStagingLocation)
+                    linkLakeFSToBackendFileWithMetadata([checksum: CloudProvidersSpecificFactories.resolveUploadChecksum(flatHeaders), size: bytesWritten], lakeFSTarget, targetStagingLocation)
                     break
                 case TransferMode.physicalPath:
+                    // Scheme-agnostic: copy to the backend via its own NIO (gs:// -> nf-google, s3:// -> nf-amazon)
+                    // and link the checksum getLinkMetadata reads back from the stored object.
                     def cloudStoragePhysicalPath = FileHelper.asPath(targetStagingLocation.physicalAddress)
 
                     def targetPhysicalPath = FilesEx.copyTo(source, cloudStoragePhysicalPath)
@@ -195,6 +201,13 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
     }
 
     private void linkLakeFSToBackendFile(Object physicalPathAttributesHolder, NextflowLakeFSPath lakeFSTarget, StagingLocation stagingLocation) {
+        def objectProperties = CloudProvidersSpecificFactories.getLinkMetadata(physicalPathAttributesHolder)
+        linkLakeFSToBackendFileWithMetadata(objectProperties, lakeFSTarget, stagingLocation)
+    }
+
+    // Link with a precomputed {checksum, size} (e.g. crc32c computed client-side during a signed_url PUT),
+    // skipping the backend-specific header/attribute parsing in getLinkMetadata.
+    private void linkLakeFSToBackendFileWithMetadata(Map objectProperties, NextflowLakeFSPath lakeFSTarget, StagingLocation stagingLocation) {
 
         Map<String, String> tags = Optional.ofNullable(lakeFSTarget.tags)
                 .orElse(Collections.emptyMap())
@@ -203,8 +216,6 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
         }
         if (log.isTraceEnabled())
             log.trace("tags " + lakeFSTarget.repository() + " " + lakeFSTarget.ref() + " " + lakeFSTarget.objectPath + " " + tags)
-
-        def objectProperties = CloudProvidersSpecificFactories.getLinkMetadata(physicalPathAttributesHolder)
 
         def stagingMetadata = new StagingMetadata()
         stagingMetadata.setUserMetadata(tags)
@@ -875,8 +886,9 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
         @Override
         void close() throws IOException {
             delegate.close()
-            Map<String, ?> flatHeaders = getUploadHttpHeadersAndCloseConnection(conn, stagingLocation)
-            linkLakeFSToBackendFile(flatHeaders, lakeFSPath, stagingLocation)
+            // checksum from the backend's PUT response (authoritative); size is the bytes we wrote.
+            def flatHeaders = getUploadHttpHeadersAndCloseConnection(conn, stagingLocation)
+            linkLakeFSToBackendFileWithMetadata([checksum: CloudProvidersSpecificFactories.resolveUploadChecksum(flatHeaders), size: position], lakeFSPath, stagingLocation)
             open = false
         }
 
@@ -910,31 +922,49 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
                         log.trace("resolved crc32c checksum ${checksum}")
                     return [checksum: checksum, size: targetAttributes.size()]
                 } else if (targetPhysicalPath.getScheme() == "s3") {
-                    throw new NotSupportedException("s3 backed file system still not supported by lakefs plugin")
+                    // S3 exposes no checksum through NIO file attributes (unlike GCS's crc32c), so read the
+                    // server-computed full-object crc64nvme via GetObjectAttributes. The upload stores crc64nvme
+                    // because we run the SDK with requestChecksumCalculation=when_required (see NextflowLakeFSPlugin).
+                    def checksum = S3PhysicalUploader.crc64nvmeHex(targetPhysicalPath.toUri().toString())
+                    if (log.isTraceEnabled())
+                        log.trace("resolved crc64nvme checksum ${checksum}")
+                    return [checksum: checksum, size: targetAttributes.size()]
                 } else if (targetPhysicalPath.getScheme() == "az") {
                     throw new NotSupportedException("az backed file system still not supported by lakefs plugin")
+                } else {
+                    // fail loudly instead of returning null (which would NPE in linkLakeFSToBackendFileWithMetadata)
+                    throw new NotSupportedException("unsupported backend scheme '${targetPhysicalPath.getScheme()}' for lakefs physical_path linking")
                 }
-            } else if (Map.isAssignableFrom(objectAttributesHolder.getClass())) {
-                def headers = (Map) objectAttributesHolder
-                // Header keys are server-cased and vary by HTTP version, so match case-insensitively.
-                def header = { String name -> headers.find { k, v -> k?.toString()?.equalsIgnoreCase(name) }?.value?.toString() }
-                def scheme = header("physicalAddress")?.with { URI.create(it).scheme }
-                if (scheme == "gs") { // google backed
-                    // GCS returns "x-goog-hash: crc32c=<base64>[; md5=<base64>]". Use crc32c, converted to hex,
-                    // so signed_url stores the same checksum the gs/Path branch would for identical bytes.
-                    def matcher = (header("x-goog-hash") ?: "") =~ 'crc32c=([A-Za-z0-9+/=]+)'
-                    def checksum = matcher.find()
-                            ? java.util.Base64.getDecoder().decode(matcher.group(1)).collect { format('%02x', it & 0xff) }.join()
-                            : header("ETag")?.replaceAll('"', '') // fallback: the ETag header is md5-hex (quoted) for simple objects
-                    if (log.isTraceEnabled())
-                        log.trace("resolved crc32c checksum ${checksum}")
-                    return [checksum: checksum, size: Long.parseLong(header("x-goog-stored-content-length"))]
-                } else if (scheme == "s3") {
-                    throw new NotSupportedException("s3 backed file system still not supported by lakefs plugin")
-                } else if (scheme == "az") {
-                    throw new NotSupportedException("az backed file system still not supported by lakefs plugin")
-                }
+            } else {
+                throw new NotSupportedException("getLinkMetadata expects a backend Path, got ${objectAttributesHolder?.getClass()?.name}")
             }
+        }
+
+        // signed_url: the checksum the backend computed over what it actually stored, taken from the PUT
+        // response headers (authoritative — no client-side guessing). GCS -> crc32c (x-goog-hash);
+        // S3 -> crc64nvme (x-amz-checksum-crc64nvme); unquoted ETag (md5) as a fallback on either.
+        static String resolveUploadChecksum(Map responseHeaders) {
+            // Header keys are server-cased and vary by HTTP version, so match case-insensitively.
+            def header = { String name -> responseHeaders.find { k, v -> k?.toString()?.equalsIgnoreCase(name) }?.value?.toString() }
+            def scheme = header("physicalAddress")?.with { URI.create(it).scheme }
+            def checksum
+            if (scheme == "gs") {
+                def matcher = (header("x-goog-hash") ?: "") =~ 'crc32c=([A-Za-z0-9+/=]+)'
+                checksum = matcher.find() ? base64ToHex(matcher.group(1)) : header("ETag")?.replaceAll('"', '')
+            } else if (scheme == "s3") {
+                def c64 = header("x-amz-checksum-crc64nvme")
+                checksum = c64 ? base64ToHex(c64) : header("ETag")?.replaceAll('"', '')
+            } else if (scheme == "az") {
+                throw new NotSupportedException("az backed file system still not supported by lakefs plugin")
+            }
+            if (log.isTraceEnabled())
+                log.trace("resolved ${scheme} checksum ${checksum}")
+            return checksum
+        }
+
+        // base64-encoded checksum bytes -> lowercase hex (GCS/S3 return checksums base64-encoded).
+        static String base64ToHex(String b64) {
+            return java.util.Base64.getDecoder().decode(b64).collect { format('%02x', it & 0xff) }.join()
         }
 
     }
