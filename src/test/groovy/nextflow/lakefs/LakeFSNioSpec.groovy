@@ -74,6 +74,13 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
                         region    : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
                         project   : System.getenv('GOOGLE_PROJECT') ?: '',
                         ext_bucket: System.getenv('GOOGLE_EXT_BUCKET') ?: ''
+                ],
+                // Consumed by nf-amazon's S3PathFactory (via Global.config.aws) for s3:// physical_path tests.
+                // Falls back to the AWS default credential chain when these env vars are absent.
+                aws   : [
+                        accessKey: System.getenv('AWS_ACCESS_KEY_ID'),
+                        secretKey: System.getenv('AWS_SECRET_ACCESS_KEY'),
+                        region   : System.getenv('AWS_REGION') ?: 'eu-central-1'
                 ]
         ]
     }
