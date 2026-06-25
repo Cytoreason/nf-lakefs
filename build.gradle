@@ -68,6 +68,7 @@ test {
      'AWS_ACCESS_KEY_ID': 'aws.accessKey',
      'AWS_SECRET_ACCESS_KEY': 'aws.secretKey',
      'AWS_REGION': 'aws.region',
+     'AWS_EXT_BUCKET': 'aws.ext_bucket',
      // dedicated S3-backed lakeFS instance for LakeFSPhysicalPathS3Spec (kept separate from LAKEFS_* above)
      'LAKEFS_S3_ACCESS_KEY': 'lakefs.s3.accessKey',
      'LAKEFS_S3_SECRET_KEY': 'lakefs.s3.secretKey',

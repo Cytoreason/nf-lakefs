@@ -174,7 +174,8 @@ class NextflowLakeFSFileSystemProvider extends FileSystemProvider implements Fil
 
     private boolean isSameBackendStorage(Path source, String storageNamespace) {
         try {
-            URI sourceUri = source.toUri()
+//            on S3 path toUri gives you 3 slashes therefore no authority
+            URI sourceUri = URI.create(source.toUriString())
             URI storageUri = URI.create(storageNamespace)
 
             // must match scheme
