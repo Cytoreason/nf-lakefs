@@ -1,5 +1,6 @@
 package nextflow.lakefs
 
+import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import software.amazon.awssdk.core.checksums.ResponseChecksumValidation
 import software.amazon.awssdk.services.s3.S3Client
@@ -29,9 +30,10 @@ class S3ChecksumReader {
                 .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
                 .build()
         try {
+            // request ETAG too, so the no-crc64nvme fallback below actually has an ETag to fall back to
             def attrs = s3.getObjectAttributes(GetObjectAttributesRequest.builder()
                     .bucket(bucket).key(key)
-                    .objectAttributes(ObjectAttributes.CHECKSUM)
+                    .objectAttributes(ObjectAttributes.CHECKSUM, ObjectAttributes.E_TAG)
                     .build())
             def b64 = attrs.checksum()?.checksumCRC64NVME()
             if (b64)
@@ -49,9 +51,17 @@ class S3ChecksumReader {
         }
     }
 
-    private static List<String> bucketAndKey(String s3Address) {
-        def uri = URI.create(s3Address)
-        return [uri.authority, uri.path.replaceFirst('^/', '')]
+    @PackageScope
+    static List<String> bucketAndKey(String s3Address) {
+        // nf-amazon's S3Path.toUri() renders standard AWS as "s3:///<bucket>/<key>" (triple slash: empty
+        // authority, bucket as the FIRST PATH SEGMENT), not "s3://<bucket>/<key>". So we can't read the bucket
+        // from uri.authority. Normalise both shapes: strip the scheme and any leading slash(es), then split off
+        // the first segment as the bucket and keep the rest as the key.
+        def rest = s3Address.replaceFirst($/^s3://?/$, '').replaceFirst('^/+', '')
+        def slash = rest.indexOf('/')
+        if (slash < 0)
+            throw new IllegalArgumentException("Cannot parse bucket/key from S3 address '${s3Address}'")
+        return [rest.substring(0, slash), rest.substring(slash + 1)]
     }
 
     private static String base64ToHex(String b64) {
