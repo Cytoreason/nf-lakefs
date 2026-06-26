@@ -1,0 +1,5 @@
+# Test-only: registers nf-amazon's S3 path factory via JDK ServiceLoader so that s3:// URIs resolve in the
+# unit-test harness (which runs Nextflow's default plugin manager and does NOT read nf-amazon's pf4j
+# extensions.idx). nf-google ships an equivalent service file in its own jar; ServiceLoader merges both, so
+# gs:// keeps working unchanged. This file is test-only and is never bundled in the published plugin.
+nextflow.cloud.aws.util.S3PathFactory

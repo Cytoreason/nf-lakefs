@@ -3,17 +3,33 @@ plugins {
     id 'jacoco'
 }
 
-version = '0.5.0'
+version = '0.6.0'
 
 dependencies {
     compileOnly 'org.slf4j:slf4j-api:2.0.16'
     compileOnly 'org.pf4j:pf4j:3.12.0'
+    // Needed ONLY to compile S3ChecksumReader's one read-back call (GetObjectAttributes): nf-amazon's NIO
+    // exposes no checksum, so we read the s3 crc64nvme via the SDK directly. Nothing else touches the SDK.
+    // compileOnly => present at build time, NOT bundled in the plugin (verified: no awssdk jar in the zip);
+    // at runtime these classes resolve against nf-amazon's own AWS SDK v2. Pinned to the version Nextflow
+    // 25.10's nf-amazon (3.4.4) ships, so we never compile against API that's absent at runtime.
+    compileOnly 'software.amazon.awssdk:s3:2.33.2'
     implementation("io.lakefs:sdk:1.72.0")
     testImplementation ('io.nextflow:nf-google:20.12.1-edge')
+    // Brings S3PathFactory (+ AWS SDK v2) onto the TEST classpath so s3:// resolves in-harness, enabling
+    // physical_path-on-S3 integration tests. Registered via the test-resources ServiceLoader file
+    // (META-INF/services/nextflow.file.FileSystemPathFactory) since nf-amazon declares it only in its pf4j
+    // extensions.idx, which the test harness's default plugin manager doesn't read. Pinned to what NF 25.10.4 ships.
+    testImplementation 'io.nextflow:nf-amazon:3.4.4'
+    testImplementation 'software.amazon.awssdk:s3:2.33.2'                 // S3ChecksumReaderSpec: direct crc64nvme check against S3
+    testImplementation 'software.amazon.awssdk:url-connection-client:2.33.2'  // sync HTTP client for the SDK in tests
 }
 
 nextflowPlugin {
-    nextflowVersion = '25.04.0'
+    // S3-backed physical_path needs nf-amazon's AWS SDK v2 (crc64nvme). Nextflow 25.04 ships nf-amazon 2.15.0
+    // which still uses SDK v1 for S3 (no crc64nvme); 25.10 ships nf-amazon 3.x with SDK v2. Require >= 25.10.
+    // This would cause a conflict in physical vs signed_url.
+    nextflowVersion = '25.10.4'
 
     provider = 'cytoreason'
     className = 'nextflow.lakefs.NextflowLakeFSPlugin'
@@ -48,7 +64,22 @@ test {
      'LAKEFS_TRANSFER_MODE': 'lakefs.transferMode',
      'GOOGLE_PROJECT': 'google.project',
      'GOOGLE_EXT_BUCKET': 'google.ext_bucket',
-     'GOOGLE_REGION': 'google.region'].each { envVar, prop ->
+     'GOOGLE_REGION': 'google.region',
+     'AWS_ACCESS_KEY_ID': 'aws.accessKey',
+     'AWS_SECRET_ACCESS_KEY': 'aws.secretKey',
+     'AWS_REGION': 'aws.region',
+     'AWS_EXT_BUCKET': 'aws.ext_bucket',
+     // dedicated S3-backed lakeFS instance for LakeFSPhysicalPathS3Spec (kept separate from LAKEFS_* above)
+     'LAKEFS_S3_ACCESS_KEY': 'lakefs.s3.accessKey',
+     'LAKEFS_S3_SECRET_KEY': 'lakefs.s3.secretKey',
+     'LAKEFS_S3_API_URL': 'lakefs.s3.apiUrl',
+     'LAKEFS_S3_TEST_REPO': 'lakefs.s3.testRepo',
+     'LAKEFS_S3_TEST_BRANCH': 'lakefs.s3.testBranch'].each { envVar, prop ->
         (project.findProperty(prop) ?: System.getenv(envVar))?.with { environment envVar, it }
     }
+    // Mirror NextflowLakeFSPlugin.start(): the test harness never boots the plugin, so set the property here
+    // too, otherwise nf-amazon's S3 PUT stores CRC32 (its default) instead of the server-side crc64nvme that
+    // physical_path links back. Honours an explicit override if already provided.
+    systemProperty('aws.requestChecksumCalculation',
+            System.getProperty('aws.requestChecksumCalculation') ?: 'when_required')
 }

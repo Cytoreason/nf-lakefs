@@ -203,51 +203,60 @@ class NextflowLakeFSFileSystemProviderSpec extends Specification {
         provider.autoCreateBranchSource == 'main'
     }
 
-    def 'getLinkMetadata (signed_url) extracts crc32c from x-goog-hash and returns it as hex'() {
-        given: 'GCS upload response headers (crc32c base64 h3UyDA== == hex 8775320c)'
+    def 'resolveUploadChecksum (GCS) extracts crc32c from x-goog-hash as hex'() {
+        given: 'GCS PUT response headers (crc32c base64 h3UyDA== == hex 8775320c)'
         def headers = [
-                'physicalAddress'             : 'gs://test-bucket/data/file.txt',
-                'x-goog-hash'                 : 'crc32c=h3UyDA==; md5=lkEaTXSekK6TTpoaPHMGgA==',
-                'x-goog-stored-content-length': '20971520',
-                'ETag'                        : '"96411a4d749e90ae934e9a1a3c730680"',
+                'physicalAddress': 'gs://test-bucket/data/file.txt',
+                'x-goog-hash'    : 'crc32c=h3UyDA==; md5=lkEaTXSekK6TTpoaPHMGgA==',
+                'ETag'           : '"96411a4d749e90ae934e9a1a3c730680"',
         ]
 
-        when:
-        def meta = NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.getLinkMetadata(headers)
-
-        then:
-        meta.checksum == '8775320c'
-        meta.size == 20971520L
+        expect:
+        NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.resolveUploadChecksum(headers) == '8775320c'
     }
 
-    def 'getLinkMetadata (signed_url) matches the x-goog-hash header case-insensitively'() {
+    def 'resolveUploadChecksum (GCS) matches the x-goog-hash header case-insensitively'() {
         given:
         def headers = [
-                'physicalAddress'             : 'gs://test-bucket/data/file.txt',
-                'X-Goog-Hash'                 : 'crc32c=h3UyDA==',
-                'x-goog-stored-content-length': '20971520',
+                'physicalAddress': 'gs://test-bucket/data/file.txt',
+                'X-Goog-Hash'    : 'crc32c=h3UyDA==',
         ]
 
-        when:
-        def meta = NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.getLinkMetadata(headers)
-
-        then:
-        meta.checksum == '8775320c'
+        expect:
+        NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.resolveUploadChecksum(headers) == '8775320c'
     }
 
-    def 'getLinkMetadata (signed_url) falls back to the unquoted ETag when x-goog-hash is absent'() {
+    def 'resolveUploadChecksum (GCS) falls back to the unquoted ETag when x-goog-hash is absent'() {
         given:
         def headers = [
-                'physicalAddress'             : 'gs://test-bucket/data/file.txt',
-                'x-goog-stored-content-length': '20971520',
-                'ETag'                        : '"96411a4d749e90ae934e9a1a3c730680"',
+                'physicalAddress': 'gs://test-bucket/data/file.txt',
+                'ETag'           : '"96411a4d749e90ae934e9a1a3c730680"',
         ]
 
-        when:
-        def meta = NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.getLinkMetadata(headers)
+        expect:
+        NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.resolveUploadChecksum(headers) == '96411a4d749e90ae934e9a1a3c730680'
+    }
 
-        then:
-        meta.checksum == '96411a4d749e90ae934e9a1a3c730680'
-        meta.size == 20971520L
+    def 'resolveUploadChecksum (S3) extracts crc64nvme from x-amz-checksum-crc64nvme as hex'() {
+        given: 'S3 PUT response headers (crc64nvme base64 TPb0AxkKTi0= == hex 4cf6f403190a4e2d)'
+        def headers = [
+                'physicalAddress'         : 's3://test-bucket/data/file.txt',
+                'x-amz-checksum-crc64nvme': 'TPb0AxkKTi0=',
+                'ETag'                    : '"43f09610ff86f4177626ce1107510bc9"',
+        ]
+
+        expect:
+        NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.resolveUploadChecksum(headers) == '4cf6f403190a4e2d'
+    }
+
+    def 'resolveUploadChecksum (S3) falls back to the unquoted ETag when crc64nvme is absent'() {
+        given:
+        def headers = [
+                'physicalAddress': 's3://test-bucket/data/file.txt',
+                'ETag'           : '"43f09610ff86f4177626ce1107510bc9"',
+        ]
+
+        expect:
+        NextflowLakeFSFileSystemProvider.CloudProvidersSpecificFactories.resolveUploadChecksum(headers) == '43f09610ff86f4177626ce1107510bc9'
     }
 }

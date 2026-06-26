@@ -46,6 +46,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
     public static final String TEST_REPO_NAME = System.getenv('LAKEFS_TEST_REPO')
     public static final String TEST_MAIN_BRANCH_NAME = System.getenv('LAKEFS_TEST_BRANCH')
     public static final String GOOGLE_EXT_BUCKET = System.getenv('GOOGLE_EXT_BUCKET')
+    public static final String AWS_EXT_BUCKET = System.getenv('AWS_EXT_BUCKET')
 
 
     @Shared
@@ -74,6 +75,13 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
                         region    : System.getenv('GOOGLE_REGION') ?: 'europe-west1',
                         project   : System.getenv('GOOGLE_PROJECT') ?: '',
                         ext_bucket: System.getenv('GOOGLE_EXT_BUCKET') ?: ''
+                ],
+                // Consumed by nf-amazon's S3PathFactory (via Global.config.aws) for s3:// physical_path tests.
+                // Falls back to the AWS default credential chain when these env vars are absent.
+                aws   : [
+                        accessKey: System.getenv('AWS_ACCESS_KEY_ID'),
+                        secretKey: System.getenv('AWS_SECRET_ACCESS_KEY'),
+                        region   : System.getenv('AWS_REGION') ?: 'eu-central-1'
                 ]
         ]
     }
@@ -315,6 +323,11 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         transferMode << transferModes
     }
 
+    // NOTE: S3-backed physical_path goes through nf-amazon's S3 NIO (symmetric with how gs:// goes through
+    // nf-google) — the generic copyTo/read path is covered by the GCS physical_path tests above. The only
+    // s3-specific code is reading the crc64nvme back, which is exercised directly against S3 in
+    // S3ChecksumReaderSpec (it needs no nf-amazon plugin, so it runs in this single-plugin test harness).
+
     def 'copy local file to a repository'() {
         given:
         setupConfig(transferMode)
@@ -517,11 +530,134 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         transferMode << transferModes
     }
 
-    @Requires({ System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION') })
+    @Requires({ System.getenv('AWS_ACCESS_KEY_ID') && System.getenv('AWS_SECRET_ACCESS_KEY') && System.getenv('AWS_EXT_BUCKET') })
+    def 'should link a remote S3 file to a repo which is backed by same file system but not the same bucket'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world!"
+
+        when:
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "data/file.txt"
+        def s3Bucket = AWS_EXT_BUCKET
+        def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        final s3Source = FileHelper.asPath("s3://$s3Bucket/nextflow-test/file.txt")
+        Files.write(s3Source, TEXT.bytes)
+
+        def provider = lakeFSPath.lakeFSFileSystem.provider()
+        provider.allowedSchemaBucketsForLinking = ["gs://some-other-bucket", "s3://$s3Bucket"]
+                .collect { schemaBucket -> URI.create(schemaBucket.toString()) }
+        and:
+        Files.createLink(lakeFSPath, s3Source)
+
+        then:
+        def pathExists = existsPath(repository, branch, objectPath)
+//        readObject(lakeFSPath) == TEXT // lakeFS needs read permission on the external bucket
+
+        // Verify that the object is actually linked (physical address matches source)
+        def stats = client.getObjectStats(repository, branch, objectPath, false)
+        FileHelper.asPath(stats.physicalAddress) == s3Source
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+        provider.allowedSchemaBucketsForLinking = []
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Requires({ System.getenv('AWS_ACCESS_KEY_ID') && System.getenv('AWS_SECRET_ACCESS_KEY') && System.getenv('AWS_EXT_BUCKET') })
+    def 'should link a remote S3 file to a repo which is backed by same file system but not the same bucket when using copy'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world!"
+
+        when:
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "data/file.txt"
+        def s3Bucket = AWS_EXT_BUCKET
+        def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        final s3Source = FileHelper.asPath("s3://$s3Bucket/nextflow-test/file.txt")
+        Files.write(s3Source, TEXT.bytes)
+
+        def provider = lakeFSPath.lakeFSFileSystem.provider()
+        provider.allowedSchemaBucketsForLinking = ["gs://some-other-bucket", "s3://$s3Bucket"]
+                .collect { schemaBucket -> URI.create(schemaBucket.toString()) }
+        and:
+        FileHelper.copyPath(s3Source, lakeFSPath)
+
+        then:
+        def pathExists = existsPath(repository, branch, objectPath)
+//        readObject(lakeFSPath) == TEXT // lakeFS needs read permission on the external bucket
+
+        // Verify that the object is actually linked (physical address matches source)
+        def stats = client.getObjectStats(repository, branch, objectPath, false)
+        FileHelper.asPath(stats.physicalAddress) == s3Source
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+        provider.allowedSchemaBucketsForLinking = []
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Requires({ System.getenv('AWS_ACCESS_KEY_ID') && System.getenv('AWS_SECRET_ACCESS_KEY') && System.getenv('AWS_EXT_BUCKET') })
+    def 'should NOT link a remote S3 file to a repo which is backed by same file system but not the same bucket when using copy_nofollow but do a content copy'() {
+        given:
+        setupConfig(transferMode)
+        def TEXT = "Hello world!"
+
+        when:
+        def repository = TEST_REPO_NAME
+        def branch = TEST_MAIN_BRANCH_NAME
+        def objectPath = "data/file.txt"
+        def s3Bucket = AWS_EXT_BUCKET
+        def lakeFSPath = lakeFSpath("lakefs://$repository/$branch/$objectPath")
+        def client = new LakeFSSDKClient(config.lakefs)
+
+        and:
+        final s3Source = FileHelper.asPath("s3://$s3Bucket/nextflow-test/file.txt")
+        Files.write(s3Source, TEXT.bytes)
+
+        def provider = lakeFSPath.lakeFSFileSystem.provider()
+        provider.allowedSchemaBucketsForLinking = ["gs://some-other-bucket", "s3://$s3Bucket"]
+                .collect { schemaBucket -> URI.create(schemaBucket.toString()) }
+        and:
+        FileHelper.copyPath(s3Source, lakeFSPath, LinkOption.NOFOLLOW_LINKS)
+
+        then:
+        def pathExists = existsPath(repository, branch, objectPath)
+        readObject(lakeFSPath) == TEXT
+
+        // Verify the object was content-copied, not linked
+        def stats = client.getObjectStats(repository, branch, objectPath, false)
+        FileHelper.asPath(stats.physicalAddress) != s3Source
+
+        cleanup:
+        if (pathExists) deleteObject(repository, branch, objectPath)
+        provider.allowedSchemaBucketsForLinking = []
+
+        where:
+        transferMode << transferModes
+    }
+
+    @Requires({
+        (System.getenv('GOOGLE_PROJECT') && System.getenv('GOOGLE_REGION')) ||
+        (System.getenv('AWS_ACCESS_KEY_ID') && System.getenv('AWS_SECRET_ACCESS_KEY'))
+    })
     def 'should link a remote file to a repo which is backed by same file system and the same bucket'() {
         given:
         setupConfig(transferMode)
-        def TEXT = "Hello world On GCS!"
+        def TEXT = "Hello world!"
         def repository = TEST_REPO_NAME
         def branch = TEST_MAIN_BRANCH_NAME
         def objectPath = "data/linked-file.txt"
@@ -537,12 +673,12 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         // We assume we have write access to the bucket
         def bucket = storageUri.authority
         def sourcePathStr = "${storageUri.scheme}://${bucket}/nf-test-data/source-file-${UUID.randomUUID()}.txt"
-        def gcsSource = FileHelper.asPath(sourcePathStr)
+        def cloudSource = FileHelper.asPath(sourcePathStr)
 
-        Files.write(gcsSource, TEXT.bytes)
+        Files.write(cloudSource, TEXT.bytes)
 
         when:
-        Files.createLink(lakeFSPath, gcsSource)
+        Files.createLink(lakeFSPath, cloudSource)
 
         then:
         def pathExists = existsPath(repository, branch, objectPath)
@@ -555,7 +691,7 @@ class LakeFSNioSpec extends Specification implements LakeFSBaseSpec {
         cleanup:
         if (pathExists) deleteObject(repository, branch, objectPath)
         try {
-            Files.deleteIfExists(gcsSource)
+            Files.deleteIfExists(cloudSource)
         } catch (Exception e) {
             log.warn("Failed to delete source file", e)
         }
