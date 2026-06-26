@@ -93,20 +93,21 @@ credentials. The target branch must already exist. **Skipped** unless all of the
 
 ```bash
 # AWS creds for the S3 backing store — must have write access to the repo's bucket
-export AWS_ACCESS_KEY_ID=…   AWS_SECRET_ACCESS_KEY=…
+export AWS_ACCESS_KEY_ID=…
+export AWS_SECRET_ACCESS_KEY=…
 export AWS_REGION=eu-central-1
 
 # the S3-backed lakeFS instance + repo/branch (LAKEFS_S3_API_URL must end in /api/v1 exactly once)
-export LAKEFS_S3_API_URL=https://lakefs.p13.aws-dev.cytoreason.com/api/v1
-export LAKEFS_S3_ACCESS_KEY=…   LAKEFS_S3_SECRET_KEY=…
-export LAKEFS_S3_TEST_REPO=p13-test-data
-export LAKEFS_S3_TEST_BRANCH=test_aws
+export LAKEFS_S3_API_URL=
+export LAKEFS_S3_ACCESS_KEY=…
+export LAKEFS_S3_SECRET_KEY=…
+export LAKEFS_S3_TEST_REPO=
+export LAKEFS_S3_TEST_BRANCH=
 
 ./gradlew test --tests '*LakeFSPhysicalPathS3Spec*'
 ```
 
-The shared S3 test target is the **p13** lakeFS instance, repo `p13-test-data`, backed by
-`s3://p13-cr-data-assets/test` in `eu-central-1`. physical_path makes nf-amazon write the object straight to
+Physical_path makes nf-amazon write the object straight to
 that bucket and then links it into lakeFS, so `AWS_*` must be S3 creds with write access to it, while
 `LAKEFS_S3_*` are the lakeFS API creds for the instance. Both sets are required; missing any var → the spec skips.
 
