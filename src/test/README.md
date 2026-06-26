@@ -24,13 +24,17 @@ Integration tests require a running lakeFS instance and are skipped by default w
 
 ### Optional Environment Variables (for physical_path transfer mode)
 
-These are only needed when running tests with `physical_path` transfer mode, which requires the user to be authenticated with the underlying storage (e.g., GCS):
+These are only needed when running tests with `physical_path` transfer mode or the ext-bucket linking tests:
 
-| Variable            | Description         | Default |
-|---------------------|---------------------|---------|
-| `GOOGLE_PROJECT`    | GCP project ID      | `""` |
-| `GOOGLE_REGION`     | GCP region          | `europe-west1` |
-| `GOOGLE_EXT_BUCKET` | GCS external bucket | `""` |
+| Variable                  | Description                                                    | Default |
+|---------------------------|----------------------------------------------------------------|---------|
+| `GOOGLE_PROJECT`          | GCP project ID                                                 | `""` |
+| `GOOGLE_REGION`           | GCP region                                                     | `europe-west1` |
+| `GOOGLE_EXT_BUCKET`       | GCS external bucket (different from the repo's bucket)         | `""` |
+| `AWS_ACCESS_KEY_ID`       | AWS access key (S3-backed physical_path or ext-bucket linking) | `""` |
+| `AWS_SECRET_ACCESS_KEY`   | AWS secret key                                                 | `""` |
+| `AWS_REGION`              | AWS region                                                     | `eu-central-1` |
+| `AWS_EXT_BUCKET`          | S3 external bucket (different from the repo's bucket)          | `""` |
 
 ### S3 checksum test (`S3ChecksumReaderSpec`)
 
@@ -194,6 +198,15 @@ Before running, ensure the following secrets are configured in your repository s
 - `GOOGLE_PROJECT` (optional)
 - `GOOGLE_REGION` (optional)
 - `GOOGLE_EXT_BUCKET` (optional)
+- `AWS_ACCESS_KEY_ID` (optional — S3 physical_path and ext-bucket linking tests)
+- `AWS_SECRET_ACCESS_KEY` (optional)
+- `AWS_REGION` (optional)
+- `AWS_EXT_BUCKET` (optional — S3 ext-bucket linking tests in `LakeFSNioSpec`)
+- `LAKEFS_S3_API_URL` (optional — `LakeFSPhysicalPathS3Spec`)
+- `LAKEFS_S3_ACCESS_KEY` (optional)
+- `LAKEFS_S3_SECRET_KEY` (optional)
+- `LAKEFS_S3_TEST_REPO` (optional)
+- `LAKEFS_S3_TEST_BRANCH` (optional)
 
 ## Test Categories
 

@@ -89,6 +89,25 @@ lakefs {
 }
 ```
 
+The same applies to S3-backed repos:
+```groovy
+lakefs {
+    allowedSchemaBucketForLinking = [
+            's3://bucket1',
+            's3://bucket2'
+    ]
+}
+```
+
+When using `physical_path` with an S3-backed lakeFS repository, also configure your AWS credentials in `nextflow.config`:
+```groovy
+aws {
+    accessKey = '<AWS_ACCESS_KEY_ID>'
+    secretKey = '<AWS_SECRET_ACCESS_KEY>'
+    region    = 'eu-central-1'
+}
+```
+
 ## Usage Example
 
 Once configured, you can use `lakefs://` URIs just like you would with `s3://` or `gs://`.
