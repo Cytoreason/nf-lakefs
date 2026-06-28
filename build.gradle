@@ -1,21 +1,32 @@
 plugins {
-    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.12'
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.15'
     id 'jacoco'
 }
 
 version = '0.6.1'
 
+
+configurations.configureEach {
+    resolutionStrategy.force(
+            'com.fasterxml.jackson.core:jackson-databind:2.18.4',
+            'com.fasterxml.jackson.core:jackson-core:2.18.4',
+            'com.fasterxml.jackson.core:jackson-annotations:2.18.4',
+            'org.apache.commons:commons-lang3:3.20.0',
+            'org.apache.commons:commons-lang:3.18.0'
+    )
+}
+
 dependencies {
     compileOnly 'org.slf4j:slf4j-api:2.0.16'
-    compileOnly 'org.pf4j:pf4j:3.12.0'
+    compileOnly 'org.pf4j:pf4j:3.14.1'
     // Needed ONLY to compile S3ChecksumReader's one read-back call (GetObjectAttributes): nf-amazon's NIO
     // exposes no checksum, so we read the s3 crc64nvme via the SDK directly. Nothing else touches the SDK.
     // compileOnly => present at build time, NOT bundled in the plugin (verified: no awssdk jar in the zip);
     // at runtime these classes resolve against nf-amazon's own AWS SDK v2. Pinned to the version Nextflow
     // 25.10's nf-amazon (3.4.4) ships, so we never compile against API that's absent at runtime.
     compileOnly 'software.amazon.awssdk:s3:2.33.2'
-    implementation("io.lakefs:sdk:1.72.0")
-    testImplementation ('io.nextflow:nf-google:20.12.1-edge')
+    implementation("io.lakefs:sdk:1.82.0")
+    testImplementation ('io.nextflow:nf-google:1.27.3')
     // Brings S3PathFactory (+ AWS SDK v2) onto the TEST classpath so s3:// resolves in-harness, enabling
     // physical_path-on-S3 integration tests. Registered via the test-resources ServiceLoader file
     // (META-INF/services/nextflow.file.FileSystemPathFactory) since nf-amazon declares it only in its pf4j
@@ -29,7 +40,7 @@ nextflowPlugin {
     // S3-backed physical_path needs nf-amazon's AWS SDK v2 (crc64nvme). Nextflow 25.04 ships nf-amazon 2.15.0
     // which still uses SDK v1 for S3 (no crc64nvme); 25.10 ships nf-amazon 3.x with SDK v2. Require >= 25.10.
     // This would cause a conflict in physical vs signed_url.
-    nextflowVersion = '25.10.4'
+    nextflowVersion = '25.10.6'
 
     provider = 'cytoreason'
     className = 'nextflow.lakefs.NextflowLakeFSPlugin'
