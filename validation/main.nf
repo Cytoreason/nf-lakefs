@@ -3,10 +3,9 @@
 // Process to analyze input files
 process analyzeData {
 
-    publishDir path: { "${params.output_dir}/output/ron_meta_entities/file_name=${file}/" }, pattern: 'context_label=*/*',
-            tags: {
-                [metadata_path: "$file", metadata_test: "context_label2", "context_label": "context_label2"] + workflow.properties + task.properties
-            }
+    publishDir path: { "${params.output_dir}/output/ron_meta_entities/file_name=${file}/" }, pattern: 'context_label=*/*', tags: {
+        [metadata_path: "${file}", metadata_test: "context_label2", "context_label": "context_label2"] + workflow.properties + task.properties
+    }
 
     input:
     tuple path(file), val(config)
@@ -29,15 +28,15 @@ process analyzeData {
 
 // Process to upload results back to lakeFS
 process uploadResults {
-    publishDir "${params.output_dir}/output/ron_meta_entities/", tags: {
-        [FOO: "${System.nanoTime()}", file: "$file"] + workflow.properties + task.properties
+    publishDir { "${params.output_dir}/output/ron_meta_entities/" }, tags: {
+        [FOO: "${System.nanoTime()}"] + workflow.properties + task.properties
     }
 
     input:
     path result
 
     output:
-    path "${result}"
+    path result
 
     script:
     """
@@ -70,7 +69,7 @@ process directLakeFSRead {
     val path
 
     output:
-    stdout result_channel
+    stdout emit: result_channel
 
     script:
     """
@@ -80,23 +79,21 @@ process directLakeFSRead {
 }
 
 workflow {
-    input_channel = Channel.fromPath(params.config_path + "/**/config.yaml", type: 'file')
-            .map { new org.yaml.snakeyaml.Yaml().load(it) + [dataset_id: it.parent.name, file: it] }
-            .map { it + [phenodata: { if (it.phenodata) it.phenodata.join(",") }] }
-            .view()
-//            .filter { !exclude_datasets.contains(it.dataset_id) }
+    input_channel = channel.fromPath(params.config_path + "/**/config.yaml", type: 'file')
+        .map { f -> new org.yaml.snakeyaml.Yaml().load(f) + [dataset_id: f.parent.name, file: f] }
+        .map { m -> m + [phenodata: {
+            if (m.phenodata) {
+                m.phenodata.join(",")
+            }
+        }] }
+        .view()
+    //            .filter { !exclude_datasets.contains(it.dataset_id) }
 
-    analyzeData(input_channel.map { tuple(it.file, it) })
+    analyzeData(input_channel.map { m -> tuple(m.file, m) })
     analyzeData.out.bye | view
 
     // Collect files from analyzeData into a directory and publish
     collectToDirectory(analyzeData.out.out_file.collect())
-//    uploadResults(analyzeData.out)
-//    directLakeFSRead('lakefs://infra-testing/main/output/meta_entity/meta_entity_dataset.parquet')
-}
-
-// Workflow completion handler
-workflow.onComplete {
-    println "Pipeline completed at: ${workflow.complete}"
-    println "Execution status: ${workflow.success ? 'OK' : 'failed'}"
+    //    uploadResults(analyzeData.out)
+    //    directLakeFSRead('lakefs://infra-testing/main/output/meta_entity/meta_entity_dataset.parquet')
 }
