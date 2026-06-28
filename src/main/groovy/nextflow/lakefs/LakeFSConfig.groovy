@@ -1,9 +1,10 @@
 package nextflow.lakefs
 
 import groovy.transform.CompileStatic
-import nextflow.config.schema.ConfigOption
-import nextflow.config.schema.ConfigScope
-import nextflow.config.schema.ScopeName
+import nextflow.config.spec.ConfigOption
+import nextflow.config.spec.ConfigScope
+import nextflow.config.spec.ScopeName
+import nextflow.script.dsl.Description
 
 /**
  * Configuration scope for lakeFS plugin settings.
@@ -12,33 +13,45 @@ import nextflow.config.schema.ScopeName
  */
 @CompileStatic
 @ScopeName('lakefs')
+@Description('''
+    The `lakefs` scope allows you to configure the `nf-lakefs` plugin.
+''')
 class LakeFSConfig implements ConfigScope {
 
     @ConfigOption
+    @Description('lakeFS API endpoint URL, e.g. https://your-lakefs-server.example.com/api/v1')
     final String apiUrl
 
     @ConfigOption
+    @Description('lakeFS access key')
     final String accessKey
 
     @ConfigOption
+    @Description('lakeFS secret key')
     final String secretKey
 
     @ConfigOption
+    @Description('Transfer mode: `signed_url` (default) or `physical_path`. Use `physical_path` for zero-copy linking and direct cloud-provider transfers (requires the matching nf-amazon or nf-google plugin).')
     final String transferMode
 
     @ConfigOption
+    @Description('Automatically create the branch if it does not exist when writing to it (default: false)')
     final Boolean autoCreateBranch
 
     @ConfigOption
+    @Description('Source branch to use when auto-creating a new branch (default: main)')
     final String autoCreateBranchSource
 
     @ConfigOption
+    @Description('HTTP read timeout for lakeFS API calls (default: 60s)')
     final String readTimeout
 
     @ConfigOption
+    @Description('HTTP connect timeout for lakeFS API calls (default: 30s)')
     final String connectTimeout
 
     @ConfigOption
+    @Description('Whitelist of cloud storage scheme+bucket prefixes (e.g. s3://my-bucket, gs://my-bucket) that are allowed as link sources when the source bucket differs from the repository\'s backing bucket. Only used with `physical_path` transfer mode.')
     final List<String> allowedSchemaBucketsForLinking
 
     LakeFSConfig() {
