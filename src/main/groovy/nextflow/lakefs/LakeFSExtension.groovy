@@ -7,7 +7,7 @@ import nextflow.plugin.extension.PluginExtensionPoint
 
 /**
  * Exposes lakeFS operations as functions callable from a Nextflow pipeline script,
- * e.g. `lakefsCommit(params.output_dir, params.commit_message)`.
+ * e.g. `lakefsCommit(params.output_dir, params.lakefs_commit_message)`.
  *
  * For committing automatically once a workflow completes successfully, prefer setting
  * `lakefs.autoCommit = true` in `nextflow.config` instead (see {@link LakeFSObserverFactory}).
