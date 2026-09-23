@@ -76,6 +76,31 @@ class LakeFSObserverSpec extends Specification {
         noExceptionThrown()
     }
 
+    def 'onFlowComplete should not attempt a commit when params.commit_message is missing, even if onFlowCreate\'s exception was swallowed'() {
+        // Nextflow's observer notification is best-effort: an exception thrown from onFlowCreate does not
+        // reliably abort the run, so the workflow may still run to completion and invoke onFlowComplete.
+        given:
+        def observer = new LakeFSObserver()
+        def mockClient = Mock(LakeFSSDKClient)
+        def session = Mock(Session) {
+            getParams() >> new ScriptBinding.ParamsMap([:])
+            isSuccess() >> true
+            getOutputDir() >> lakeFSPath(mockClient)
+        }
+        try {
+            observer.onFlowCreate(session)
+        } catch (AbortOperationException ignored) {
+            // simulate the runtime swallowing the exception and letting the workflow proceed
+        }
+
+        when:
+        observer.onFlowComplete()
+
+        then:
+        noExceptionThrown()
+        0 * mockClient.commit(*_)
+    }
+
     def 'onFlowComplete should commit the branch backing the output dir when the workflow succeeded'() {
         given:
         def observer = new LakeFSObserver()
