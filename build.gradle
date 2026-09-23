@@ -3,7 +3,7 @@ plugins {
     id 'jacoco'
 }
 
-version = '0.6.1'
+version = '0.7.0'
 
 
 configurations.configureEach {
@@ -25,7 +25,7 @@ dependencies {
     // at runtime these classes resolve against nf-amazon's own AWS SDK v2. Pinned to the version Nextflow
     // 25.10's nf-amazon (3.4.4) ships, so we never compile against API that's absent at runtime.
     compileOnly 'software.amazon.awssdk:s3:2.33.2'
-    implementation("io.lakefs:sdk:1.82.0")
+    implementation("io.lakefs:sdk:1.86.0")
     testImplementation ('io.nextflow:nf-google:1.27.3')
     // Brings S3PathFactory (+ AWS SDK v2) onto the TEST classpath so s3:// resolves in-harness, enabling
     // physical_path-on-S3 integration tests. Registered via the test-resources ServiceLoader file
@@ -47,7 +47,9 @@ nextflowPlugin {
     description = 'This plugin integrates Nextflow with lakeFS, allowing you to use `lakefs://` URIs as inputs and outputs in your pipelines. It brings the power of data versioning, reproducibility, and atomic operations to your Nextflow workflows. Detailed description at : https://github.com/CytoReason-Releases/nf-lakefs'
     extensionPoints = [
             'nextflow.lakefs.NextflowLakeFSPathFactory',
-            'nextflow.lakefs.LakeFSConfig'
+            'nextflow.lakefs.LakeFSConfig',
+            'nextflow.lakefs.LakeFSExtension',
+            'nextflow.lakefs.LakeFSObserverFactory'
     ]
 
 //    publishing {

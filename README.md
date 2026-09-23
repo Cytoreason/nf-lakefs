@@ -59,6 +59,7 @@ lakefs {
 | `readTimeout` | No | `60s` | HTTP read timeout for lakeFS API calls |
 | `connectTimeout` | No | `30s` | HTTP connect timeout for lakeFS API calls |
 | `allowedSchemaBucketsForLinking` | No | `[]` | Whitelist of cloud storage scheme+bucket prefixes (e.g. `s3://bucket`, `gs://bucket`) allowed as link sources when the source bucket differs from the repository's backing bucket. Only used with `physical_path` transfer mode. |
+| `autoCommit` | No | `false` | Automatically commit the branch backing the workflow output directory once the workflow completes successfully. See [Committing Changes](#committing-changes). |
 ### Auto-Create Branch
 
 When `autoCreateBranch` is enabled, the plugin will automatically create a new branch if it doesn't exist when you attempt to write to it. This is useful for workflows that dynamically create output branches.
@@ -147,6 +148,47 @@ workflow {
 ```shell
 nextflow run main.nf 
 ```
+
+## Committing Changes
+
+Writing files to a `lakefs://` path stages them on the branch, but they remain uncommitted until a commit is created.
+
+### Automatic commit on workflow completion
+
+Set `lakefs.autoCommit = true` and the plugin will automatically commit the branch backing the workflow's [output directory](https://www.nextflow.io/docs/latest/reference/config.html#outputdir) once the workflow completes successfully — no `workflow.onComplete` code needed in your pipeline:
+
+```groovy
+lakefs {
+    apiUrl    = 'https://your-lakefs-server.example.com/api/v1'
+    accessKey = 'YOUR_LAKEFS_ACCESS_KEY'
+    secretKey = 'YOUR_LAKEFS_SECRET_KEY'
+    autoCommit = true
+}
+
+outputDir = 'lakefs://my-repo/output-branch/path/to/'
+```
+
+The commit message is always taken from `params.commit_message`, since — unlike the lakeFS connection settings above — it's specific to a single run rather than the environment, and so is naturally passed as a pipeline param on the command line rather than hardcoded in `nextflow.config`:
+
+```shell
+nextflow run main.nf --commit_message "my commit message"
+```
+
+The workflow run fails fast (before running) if `params.commit_message` isn't provided. If the workflow doesn't complete successfully, or the output directory isn't a `lakefs://` path, no commit is attempted.
+
+### Committing manually
+
+The plugin also exposes a `lakefsCommit(path, message)` function that pipelines can call directly, for finer-grained control (e.g. committing multiple branches):
+
+```groovy
+workflow.onComplete {
+    if (workflow.success) {
+        lakefsCommit(params.output_dir, params.commit_message)
+    }
+}
+```
+
+`path` can be any `lakefs://<repo>/<branch>/...` URI on the branch you want to commit; only the repository and branch components are used. `lakefsCommit` returns the created commit ID.
 
 ## Support & contributions
 
