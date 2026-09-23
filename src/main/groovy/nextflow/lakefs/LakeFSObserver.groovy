@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 
 /**
  * Commits the branch backing the workflow's output directory (the `outputDir` config /
- * `-output-dir` CLI option) once the workflow completes successfully, using `params.commit_message`
+ * `-output-dir` CLI option) once the workflow completes successfully, using `params.lakefs_commit_message`
  * as the commit message. Registered by {@link LakeFSObserverFactory} when `lakefs.autoCommit` is
  * enabled, so pipelines don't need to implement their own `workflow.onComplete` handler.
  *
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory
 @CompileStatic
 class LakeFSObserver implements TraceObserverV2 {
 
-    static final String COMMIT_MESSAGE_PARAM = 'commit_message'
+    static final String COMMIT_MESSAGE_PARAM = 'lakefs_commit_message'
 
     private static final Logger log = LoggerFactory.getLogger(LakeFSObserver)
 

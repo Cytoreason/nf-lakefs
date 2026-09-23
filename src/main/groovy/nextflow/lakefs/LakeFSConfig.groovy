@@ -55,7 +55,7 @@ class LakeFSConfig implements ConfigScope {
     final List<String> allowedSchemaBucketsForLinking
 
     @ConfigOption
-    @Description('When enabled, automatically commit the branch backing the workflow output directory (`outputDir`/`-output-dir`) once the workflow completes successfully, using `params.commit_message` as the commit message (default: `false`)')
+    @Description('When enabled, automatically commit the branch backing the workflow output directory (`outputDir`/`-output-dir`) once the workflow completes successfully, using `params.lakefs_commit_message` as the commit message (default: `false`)')
     final Boolean autoCommit
 
     LakeFSConfig() {

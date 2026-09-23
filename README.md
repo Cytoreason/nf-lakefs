@@ -168,13 +168,13 @@ lakefs {
 outputDir = 'lakefs://my-repo/output-branch/path/to/'
 ```
 
-The commit message is always taken from `params.commit_message`, since — unlike the lakeFS connection settings above — it's specific to a single run rather than the environment, and so is naturally passed as a pipeline param on the command line rather than hardcoded in `nextflow.config`:
+The commit message is always taken from `params.lakefs_commit_message`, since — unlike the lakeFS connection settings above — it's specific to a single run rather than the environment, and so is naturally passed as a pipeline param on the command line rather than hardcoded in `nextflow.config`:
 
 ```shell
-nextflow run main.nf --commit_message "my commit message"
+nextflow run main.nf --lakefs_commit_message "my commit message"
 ```
 
-If `params.commit_message` isn't provided, the plugin logs a warning as soon as the run starts, then a clear error once the workflow finishes, and no commit is attempted. If the workflow doesn't complete successfully, or the output directory isn't a `lakefs://` path, no commit is attempted either.
+If `params.lakefs_commit_message` isn't provided, the plugin logs a warning as soon as the run starts, then a clear error once the workflow finishes, and no commit is attempted. If the workflow doesn't complete successfully, or the output directory isn't a `lakefs://` path, no commit is attempted either.
 
 ### Committing manually
 
@@ -183,7 +183,7 @@ The plugin also exposes a `lakefsCommit(path, message)` function that pipelines 
 ```groovy
 workflow.onComplete {
     if (workflow.success) {
-        lakefsCommit(params.output_dir, params.commit_message)
+        lakefsCommit(params.output_dir, params.lakefs_commit_message)
     }
 }
 ```

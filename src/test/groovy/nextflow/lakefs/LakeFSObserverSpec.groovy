@@ -16,7 +16,7 @@ class LakeFSObserverSpec extends Specification {
         return new NextflowLakeFSPath(fs, '')
     }
 
-    def 'onFlowCreate should throw when params.commit_message is missing'() {
+    def 'onFlowCreate should throw when params.lakefs_commit_message is missing'() {
         given:
         def observer = new LakeFSObserver()
         def session = Mock(Session) { getParams() >> new ScriptBinding.ParamsMap([:]) }
@@ -26,13 +26,13 @@ class LakeFSObserverSpec extends Specification {
 
         then:
         def e = thrown(AbortOperationException)
-        e.message.contains('commit_message')
+        e.message.contains('lakefs_commit_message')
     }
 
-    def 'onFlowCreate should not throw when params.commit_message is present'() {
+    def 'onFlowCreate should not throw when params.lakefs_commit_message is present'() {
         given:
         def observer = new LakeFSObserver()
-        def session = Mock(Session) { getParams() >> new ScriptBinding.ParamsMap([commit_message: 'hello']) }
+        def session = Mock(Session) { getParams() >> new ScriptBinding.ParamsMap([lakefs_commit_message: 'hello']) }
 
         when:
         observer.onFlowCreate(session)
@@ -46,7 +46,7 @@ class LakeFSObserverSpec extends Specification {
         def observer = new LakeFSObserver()
         def mockClient = Mock(LakeFSSDKClient)
         def session = Mock(Session) {
-            getParams() >> new ScriptBinding.ParamsMap([commit_message: 'hello'])
+            getParams() >> new ScriptBinding.ParamsMap([lakefs_commit_message: 'hello'])
             isSuccess() >> false
             getOutputDir() >> lakeFSPath(mockClient)
         }
@@ -63,7 +63,7 @@ class LakeFSObserverSpec extends Specification {
         given:
         def observer = new LakeFSObserver()
         def session = Mock(Session) {
-            getParams() >> new ScriptBinding.ParamsMap([commit_message: 'hello'])
+            getParams() >> new ScriptBinding.ParamsMap([lakefs_commit_message: 'hello'])
             isSuccess() >> true
             getOutputDir() >> Paths.get('/tmp/results')
         }
@@ -76,7 +76,7 @@ class LakeFSObserverSpec extends Specification {
         noExceptionThrown()
     }
 
-    def 'onFlowComplete should not attempt a commit when params.commit_message is missing, even if onFlowCreate\'s exception was swallowed'() {
+    def 'onFlowComplete should not attempt a commit when params.lakefs_commit_message is missing, even if onFlowCreate\'s exception was swallowed'() {
         // Nextflow's observer notification is best-effort: an exception thrown from onFlowCreate does not
         // reliably abort the run, so the workflow may still run to completion and invoke onFlowComplete.
         given:
@@ -106,7 +106,7 @@ class LakeFSObserverSpec extends Specification {
         def observer = new LakeFSObserver()
         def mockClient = Mock(LakeFSSDKClient)
         def session = Mock(Session) {
-            getParams() >> new ScriptBinding.ParamsMap([commit_message: 'my commit message'])
+            getParams() >> new ScriptBinding.ParamsMap([lakefs_commit_message: 'my commit message'])
             isSuccess() >> true
             getOutputDir() >> lakeFSPath(mockClient, 'my-repo', 'my-branch')
         }
