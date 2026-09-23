@@ -54,6 +54,10 @@ class LakeFSConfig implements ConfigScope {
     @Description('Whitelist of cloud storage scheme+bucket prefixes (e.g. s3://my-bucket, gs://my-bucket) that are allowed as link sources when the source bucket differs from the repository\'s backing bucket. Only used with `physical_path` transfer mode.')
     final List<String> allowedSchemaBucketsForLinking
 
+    @ConfigOption
+    @Description('When enabled, automatically commit the branch backing the workflow output directory (`outputDir`/`-output-dir`) once the workflow completes successfully, using `params.commit_message` as the commit message (default: `false`)')
+    final Boolean autoCommit
+
     LakeFSConfig() {
         this.apiUrl = null
         this.accessKey = null
@@ -64,6 +68,7 @@ class LakeFSConfig implements ConfigScope {
         this.readTimeout = '60s'
         this.connectTimeout = '30s'
         this.allowedSchemaBucketsForLinking = []
+        this.autoCommit = false
     }
 
     LakeFSConfig(Map opts, Map env = [:]) {
@@ -79,5 +84,6 @@ class LakeFSConfig implements ConfigScope {
         this.allowedSchemaBucketsForLinking =
                 raw instanceof List ? raw :
                         raw ? [raw.toString()] : []
+        this.autoCommit = opts.autoCommit as Boolean ?: false
     }
 }
