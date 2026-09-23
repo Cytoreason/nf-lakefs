@@ -27,7 +27,10 @@ class LakeFSObserver implements TraceObserverV2 {
     @Override
     void onFlowCreate(Session session) {
         this.session = session
-        if (!session.getParams().get(COMMIT_MESSAGE_PARAM))
+        // Best-effort early warning: exceptions thrown from observer callbacks are notification-only
+        // in Nextflow and do not reliably abort the run, so this is not the authoritative check --
+        // onFlowComplete() below re-validates before ever attempting a commit.
+        if (!commitMessage())
             throw new AbortOperationException(
                     "lakefs.autoCommit is enabled but params.${COMMIT_MESSAGE_PARAM} was not provided")
     }
@@ -43,7 +46,17 @@ class LakeFSObserver implements TraceObserverV2 {
             log.debug("Skipping lakeFS auto-commit: workflow output directory '$outputDir' is not a lakefs:// path")
             return
         }
-        final message = session.getParams().get(COMMIT_MESSAGE_PARAM) as String
+        final message = commitMessage()
+        if (!message) {
+            log.error("lakeFS auto-commit skipped: lakefs.autoCommit is enabled but " +
+                    "params.${COMMIT_MESSAGE_PARAM} was not provided -- pass e.g. --${COMMIT_MESSAGE_PARAM} " +
+                    "'<message>' on the command line")
+            return
+        }
         LakeFSCommitSupport.commit(outputDir, message)
+    }
+
+    private String commitMessage() {
+        return session.getParams().get(COMMIT_MESSAGE_PARAM) as String
     }
 }

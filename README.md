@@ -174,7 +174,7 @@ The commit message is always taken from `params.commit_message`, since — unlik
 nextflow run main.nf --commit_message "my commit message"
 ```
 
-The workflow run fails fast (before running) if `params.commit_message` isn't provided. If the workflow doesn't complete successfully, or the output directory isn't a `lakefs://` path, no commit is attempted.
+If `params.commit_message` isn't provided, the plugin logs a warning as soon as the run starts, then a clear error once the workflow finishes, and no commit is attempted. If the workflow doesn't complete successfully, or the output directory isn't a `lakefs://` path, no commit is attempted either.
 
 ### Committing manually
 
