@@ -1,6 +1,6 @@
 # Nextflow lakeFS Plugin (`nf-lakefs`)
 
-[!Nextflow plugin](https://www.nextflow.io/docs/latest/plugins.html) 
+![Nextflow plugin](https://www.nextflow.io/docs/latest/plugins.html) 
 
 This plugin integrates Nextflow with lakeFS, allowing you to use `lakefs://` URIs as inputs and outputs in your pipelines. It brings the power of data versioning, reproducibility, and atomic operations to your Nextflow workflows.
 

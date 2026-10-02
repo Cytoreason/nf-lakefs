@@ -10,3 +10,6 @@ work
 
 /gradle.properties
 /validation/output/
+
+# macOS
+.DS_Store
